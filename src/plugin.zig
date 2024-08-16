@@ -54,7 +54,7 @@ const Scraper = struct {
     pub fn init(allocator: std.mem.Allocator) Scraper {
         return Scraper{
             .allocator = allocator,
-            .plugins = null,
+            .plugins = std.ArrayList(Plugin).init(allocator),
         };
     }
 
@@ -238,7 +238,7 @@ const Scraper = struct {
 
             defer plugin_struct.deinit();
 
-            
+            try self.plugins.?.append(plugin_struct);
 
             std.debug.print("[+] Found plugin: {s}\n Description: {s}\n Creator: {s}\n CreatorLink: {s}\n Github: {s}\n", .{
                 plugin_struct.name.items,
