@@ -11,6 +11,11 @@ const usage =
     \\  get <key>
     \\ 
 ;
+const msg =
+    \\[-] Missing key or value
+    \\Usage: --config set <key> <value>
+    \\key are mc_path, subnames, cfg
+;
 
 // The main function for the cli
 pub fn handle(allocator: std.mem.Allocator, args: [][:0]u8) !void {
@@ -72,13 +77,11 @@ const Configure = struct {
     pub fn set(self: *Configure) !void {
         // --config set <key> <value>
         if (self.args.len < 5) {
-            std.debug.print("[-] Missing key or value\n", .{});
-            std.debug.print("Usage: --config set <key> <value>\n", .{});
+            std.debug.print("{s}", .{msg});
             return;
         }
         if (self.args.len > 5) {
-            std.debug.print("[-] Too many arguments\n", .{});
-            std.debug.print("Usage: --config set <key> <value>\n", .{});
+            std.debug.print("{s}", .{msg});
             return;
         }
         const key = self.args[3];
