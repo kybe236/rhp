@@ -18,5 +18,5 @@ pub fn main() !void {
     std.debug.print("\n", .{});
 
     // Call cli code
-    cli.handle(allocator, args);
+    try cli.handle(allocator, args);
 }

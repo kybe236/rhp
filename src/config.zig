@@ -1,10 +1,11 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const eql = std.mem.eql;
 
 const config_folder = "/.rhp";
 const config_file = "config";
 
-const Config = struct {
+pub const Config = struct {
     /// The path to the minecraft folder
     mc_path: std.ArrayList(u8),
     /// If the folder has subnames for instances
@@ -41,10 +42,7 @@ const Config = struct {
         defer path.deinit();
 
         std.fs.makeDirAbsolute(path.items) catch |err| { // Create the folder and handle errors
-            if (err == std.posix.MakeDirError.PathAlreadyExists) {
-                // Don't return if folder already exists
-                std.debug.print("[+] Folder already exists continuing\n", .{});
-            } else {
+            if (err == std.posix.MakeDirError.PathAlreadyExists) {} else {
                 // Return if error creating folder
                 std.debug.print("[-] Error creating config folder\n", .{});
                 return err;
@@ -122,7 +120,6 @@ const Config = struct {
         defer allocator.free(data);
 
         var lines = std.mem.splitAny(u8, data, "\n");
-        const eql = std.mem.eql; //nice shortcut
 
         while (lines.peek() != null) {
             const line = lines.next().?; // Get the line
@@ -160,6 +157,105 @@ const Config = struct {
 
         std.debug.print("[+] Config loaded\n", .{});
     }
+
+    /// Set the key to the value
+    /// - key: The key to set
+    /// - value: The value to set
+    pub fn set(self: *Config, key: [:0]u8, value: [:0]u8, allocator: std.mem.Allocator) !void {
+        if (eql(u8, key, "mc_path")) {
+            if (eql(u8, value, "prismlauncher")) {
+                var env = try GetAppdataPath(allocator);
+                switch (builtin.os.tag) {
+                    .linux, .macos => {
+                        try env.appendSlice("/.local/share/PrismLauncher/instances");
+                        self.mc_path = env;
+                    },
+                    .windows => {
+                        try env.appendSlice("PrismLauncher/instances");
+                        self.mc_path = env;
+                    },
+                    else => {
+                        std.debug.print("OS not supported\n", .{});
+                        return;
+                    },
+                }
+            } else if (eql(u8, value, "multimc")) {
+                var env = try GetAppdataPath(allocator);
+                switch (builtin.os.tag) {
+                    .linux, .macos => {
+                        try env.appendSlice("/.local/share/multimc/instances");
+                    },
+                    .windows => {
+                        std.debug.print("[-] MultiMC has no default path on Windows\n", .{});
+                    },
+                    else => {
+                        std.debug.print("OS not supported\n", .{});
+                        return;
+                    },
+                }
+            } else if (eql(u8, value, "official")) {
+                var env = try GetAppdataPath(allocator);
+                switch (builtin.os.tag) {
+                    .linux, .macos => {
+                        try env.appendSlice("/.minecraft");
+                        self.mc_path = env;
+                    },
+                    .windows => {
+                        try env.appendSlice("/.minecraft");
+                        self.mc_path = env;
+                    },
+                    else => {
+                        std.debug.print("OS not supported\n", .{});
+                        return;
+                    },
+                }
+            } else {
+                self.mc_path.items = "";
+                try self.mc_path.appendSlice(value);
+            }
+            std.debug.print("[+] mc_path set to {s}\n", .{value});
+        } else if (eql(u8, key, "subnames")) {
+            if (eql(u8, value, "true")) {
+                self.subnames = true;
+                std.debug.print("[+] subnames set to true\n", .{});
+            } else {
+                self.subnames = false;
+                std.debug.print("[+] subnames set to false\n", .{});
+            }
+        } else if (eql(u8, key, "cfg")) {
+            if (eql(u8, value, "true")) {
+                self.cfg = true;
+                std.debug.print("[+] cfg set to true\n", .{});
+            } else {
+                self.cfg = false;
+                std.debug.print("[+] cfg set to false\n", .{});
+            }
+        } else {
+            std.debug.print("[-] Unknown key: {s}\n", .{key});
+        }
+    }
+
+    /// Get the value of the key
+    /// - key: The key to get
+    pub fn get(self: Config, key: []u8) []const u8 {
+        if (std.mem.eql(u8, key, "mc_path")) {
+            return self.mc_path.items;
+        } else if (std.mem.eql(u8, key, "subnames")) {
+            if (self.subnames) {
+                return "true"[0..];
+            } else {
+                return "false"[0..];
+            }
+        } else if (std.mem.eql(u8, key, "cfg")) {
+            if (self.cfg) {
+                return "true"[0..];
+            } else {
+                return "false"[0..];
+            }
+        } else {
+            return "Unknown key"[0..];
+        }
+    }
 };
 
 const ErrorSet = error{
@@ -173,7 +269,6 @@ pub fn GetAppdataPath(allocator: std.mem.Allocator) !std.ArrayList(u8) {
     defer env.deinit(); // Deinit the environment variables
 
     var path = std.ArrayList(u8).init(allocator); // Initialize the path
-    errdefer path.deinit(); // Deinit the path if an error occurs
 
     switch (builtin.os.tag) {
         .linux, .macos => {
