@@ -4,6 +4,7 @@ const config = @import("config.zig");
 const eql = std.mem.eql;
 
 const site = "https://raw.githubusercontent.com/RusherDevelopment/rusherhack-plugins/main/README.md";
+var debug = false;
 
 pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     var configure = config.Config.init(allocator);
@@ -19,6 +20,13 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     if (eql(u8, pluginName, "--help")) {
         std.debug.print("Usage: rhp <plugin-name>\n", .{});
         return;
+    }
+
+    if (args.len < 3) {
+        if (eql(u8, args[2], "debug")) {
+            debug = true;
+            return;
+        }
     }
 
     try getPlugins(allocator);
@@ -239,14 +247,15 @@ const Scraper = struct {
             defer plugin_struct.deinit();
 
             try self.plugins.?.append(plugin_struct);
-
-            std.debug.print("[+] Found plugin: {s}\n Description: {s}\n Creator: {s}\n CreatorLink: {s}\n Github: {s}\n", .{
-                plugin_struct.name.items,
-                plugin_struct.description.items,
-                plugin_struct.creator.items,
-                plugin_struct.creatorLink.items,
-                plugin_struct.url.items,
-            });
+            if (debug) {
+                std.debug.print("[+] Found plugin: {s}\n Description: {s}\n Creator: {s}\n CreatorLink: {s}\n Github: {s}\n", .{
+                    plugin_struct.name.items,
+                    plugin_struct.description.items,
+                    plugin_struct.creator.items,
+                    plugin_struct.creatorLink.items,
+                    plugin_struct.url.items,
+                });
+            }
         }
     }
 };
