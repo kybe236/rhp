@@ -32,8 +32,10 @@ pub fn getPlugins(allocator: std.mem.Allocator) !void {
 }
 
 const Plugin = struct {
-    name: []const u8,
-    url: []const u8,
+    name: std.ArrayList(u8),
+    description: std.ArrayList(u8),
+    url: std.ArrayList(u8),
+    img: std.ArrayList(u8),
 };
 
 const Scraper = struct {
@@ -78,8 +80,20 @@ const Scraper = struct {
         var lines = std.mem.splitAny(u8, response.items, "\n");
         defer lines.deinit();
 
+        var at_start = true;
         while (true) {
-            
+            var line = lines.next();
+            if (line == null) {
+                continue;
+            }
+            line = line.?;
+            if (eql(u8, line, "<!-- START PLUGINS LIST -->")) {
+                at_start = false;
+                continue;
+            }
+            if (eql(u8, line, "<!-- END PLUGINS LIST -->")) {
+                break;
+            }
         }
     }
 };
