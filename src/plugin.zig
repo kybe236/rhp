@@ -22,21 +22,29 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         return;
     }
 
-    if (args.len < 3) {
+    if (args.len > 3) {
         if (eql(u8, args[2], "debug")) {
             debug = true;
-            return;
         }
     }
 
-    try getPlugins(allocator);
-}
-
-pub fn getPlugins(allocator: std.mem.Allocator) !void {
     var scraper = Scraper.init(allocator);
     defer scraper.deinit();
-
     try scraper.scrape();
+
+    if (scraper.plugins == null) {
+        return;
+    }
+    for (scraper.plugins.?.items) |plugin| {
+        if (eql(u8, pluginName, plugin.name.items)) {
+            std.debug.print("[+] Found plugin: {s}\n", .{pluginName});
+            std.debug.print("[+] Description: {s}\n", .{plugin.description.items});
+            std.debug.print("[+] Creator: {s}\n", .{plugin.creator.items});
+            std.debug.print("[+] CreatorLink: {s}\n", .{plugin.creatorLink.items});
+            std.debug.print("[+] URL: {s}\n", .{plugin.url.items});
+            return;
+        }
+    }
 }
 
 const Plugin = struct {
@@ -68,6 +76,13 @@ const Scraper = struct {
 
     pub fn deinit(self: *Scraper) void {
         if (self.plugins != null) {
+            for (self.plugins.?.items) |plugin| {
+                plugin.creator.deinit();
+                plugin.creatorLink.deinit();
+                plugin.description.deinit();
+                plugin.name.deinit();
+                plugin.url.deinit();
+            }
             self.plugins.?.deinit();
         }
     }
@@ -186,6 +201,7 @@ const Scraper = struct {
 
             // Automatically report missing information
             if (name == null or githubLink == null or creator == null or description == null or creatorLink == null) {
+                std.debug.print("--------------------------------------\n", .{});
                 std.debug.print("[-] Detected missing information\n", .{});
                 std.debug.print("[-] Please contact maintainer\n", .{});
                 if (name == null) {
@@ -218,6 +234,7 @@ const Scraper = struct {
                 if (creatorLink != null) {
                     std.debug.print("[-] Creator link: {s}\n", .{creatorLink.?});
                 }
+                std.debug.print("--------------------------------------\n", .{});
             }
 
             var plugin_struct = Plugin{
@@ -244,18 +261,15 @@ const Scraper = struct {
                 try plugin_struct.creatorLink.appendSlice(creatorLink.?);
             }
 
-            defer plugin_struct.deinit();
+            if (debug) {
+                std.debug.print("[DEBUG] Plugin name: {s}\n", .{plugin_struct.name.items});
+                std.debug.print("[DEBUG] Plugin description: {s}\n", .{plugin_struct.description.items});
+                std.debug.print("[DEBUG] Plugin creator: {s}\n", .{plugin_struct.creator.items});
+                std.debug.print("[DEBUG] Plugin creatorLink: {s}\n", .{plugin_struct.creatorLink.items});
+                std.debug.print("[DEBUG] Plugin URL: {s}\n", .{plugin_struct.url.items});
+            }
 
             try self.plugins.?.append(plugin_struct);
-            if (debug) {
-                std.debug.print("[+] Found plugin: {s}\n Description: {s}\n Creator: {s}\n CreatorLink: {s}\n Github: {s}\n", .{
-                    plugin_struct.name.items,
-                    plugin_struct.description.items,
-                    plugin_struct.creator.items,
-                    plugin_struct.creatorLink.items,
-                    plugin_struct.url.items,
-                });
-            }
         }
     }
 };
