@@ -112,8 +112,10 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     var ranks = std.ArrayList(PluginRank).init(allocator);
     defer ranks.deinit();
 
+    std.debug.print("[+] Correcting to ", .{});
     while (bestMatchStr.peek() != null) {
         const word = bestMatchStr.next().?;
+        std.debug.print("{s} ", .{word});
 
         for (scraper.plugins.?.items) |plugin| {
             var rank = PluginRank{
@@ -123,10 +125,9 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
             rank.countOcurrences(word);
             try ranks.append(rank);
         }
-
-        std.mem.sort(PluginRank, ranks.items, {}, lessThenRank);
     }
     std.mem.sort(PluginRank, ranks.items, {}, lessThenRank);
+    std.debug.print("\n", .{});
 
     if (ranks.items[0].ocurrences == 0) {
         std.debug.print("[-] No plugins found\n", .{});
@@ -383,15 +384,15 @@ const Scraper = struct {
                     if (creatorLinkStart != null and creatorLinkEnd != null and creatorLinkStart.? < creatorLinkEnd.?) {
                         creatorLink = line.?[creatorLinkStart.? + 2 .. creatorLinkEnd.?];
                     }
-                } else if (std.mem.containsAtLeast(u8, line.?, 1, "<details>") or
-                    std.mem.containsAtLeast(u8, line.?, 1, "</details>") or
-                    std.mem.containsAtLeast(u8, line.?, 1, "<summary>") or
-                    std.mem.containsAtLeast(u8, line.?, 1, "</summary>") or
-                    std.mem.containsAtLeast(u8, line.?, 1, "<p align=\"center\">") or
-                    std.mem.containsAtLeast(u8, line.?, 1, "</p>") or
-                    std.mem.containsAtLeast(u8, line.?, 1, "<img src=") or
-                    std.mem.containsAtLeast(u8, line.?, 1, "</a>") or
-                    std.mem.containsAtLeast(u8, line.?, 1, "<a href="))
+                } else if (std.mem.indexOf(u8, line.?, "<details>") != null or
+                    std.mem.indexOf(u8, line.?, "</details>") != null or
+                    std.mem.indexOf(u8, line.?, "<summary>") != null or
+                    std.mem.indexOf(u8, line.?, "</summary>") != null or
+                    std.mem.indexOf(u8, line.?, "<p align=\"center\">") != null or
+                    std.mem.indexOf(u8, line.?, "</p>") != null or
+                    std.mem.indexOf(u8, line.?, "<img src=") != null or
+                    std.mem.indexOf(u8, line.?, "</a>") != null or
+                    std.mem.indexOf(u8, line.?, "<a href=") != null)
                 {
                     continue;
                 } else if (line.?.len > 1) {
