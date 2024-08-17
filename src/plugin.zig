@@ -7,10 +7,13 @@ const site = "https://raw.githubusercontent.com/RusherDevelopment/rusherhack-plu
 var debug = false;
 
 pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+    // Initialize the configuration
     var configure = config.Config.init(allocator);
     defer configure.deinit();
+    // Load the configuration
     try configure.load(allocator);
 
+    // Check if the user gave a plugin name
     if (args.len < 2) {
         std.debug.print("[-] Missing plugin name\n", .{});
         return;
@@ -22,7 +25,7 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         return;
     }
 
-    if (args.len > 3) {
+    if (args.len > 2) {
         if (eql(u8, args[2], "debug")) {
             debug = true;
         }
@@ -32,20 +35,108 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     defer scraper.deinit();
     try scraper.scrape();
 
+    // Make the lower name lowercase and remove newlines
+    const lowerName = try std.ascii.allocLowerString(allocator, pluginName);
+    var lowerNameArray = std.ArrayList(u8).init(allocator);
+    defer lowerNameArray.deinit();
+    for (lowerName) |c| {
+        if (c == '\n' or c == '\r') {
+            continue;
+        }
+        try lowerNameArray.append(c);
+    }
+    defer allocator.free(lowerName);
+    const lowerPluginName = try std.ascii.allocLowerString(allocator, pluginName);
+
+    // If theres no plugins return
     if (scraper.plugins == null) {
+        std.debug.print("[-] No plugins found\n", .{});
         return;
     }
+
+    var names = std.mem.splitAny(u8, pluginName, " ");
+
     for (scraper.plugins.?.items) |plugin| {
-        if (eql(u8, pluginName, plugin.name.items)) {
-            std.debug.print("[+] Found plugin: {s}\n", .{pluginName});
-            std.debug.print("[+] Description: {s}\n", .{plugin.description.items});
-            std.debug.print("[+] Creator: {s}\n", .{plugin.creator.items});
-            std.debug.print("[+] CreatorLink: {s}\n", .{plugin.creatorLink.items});
-            std.debug.print("[+] URL: {s}\n", .{plugin.url.items});
+        if (plugin.name.items.len == 0) {
+            continue;
+        }
+        var lowerPluginNameArray = std.ArrayList(u8).init(allocator);
+        defer lowerPluginNameArray.deinit();
+        for (lowerPluginName) |c| {
+            if (c == ' ' or c == '\n' or c == '\r') {
+                continue;
+            }
+            try lowerPluginNameArray.append(c);
+        }
+        defer allocator.free(lowerPluginName);
+
+        // Debug stuff
+        if (debug) {
+            std.debug.print("[DEBUG] Comparing {s} with {s}\n", .{ lowerNameArray.items, lowerPluginNameArray.items });
+        }
+
+        // Alow 1 typo for exact match
+        if (try levenshteinDistance(allocator, lowerPluginNameArray.items, lowerNameArray.items) < 2) {
+            std.debug.print("[+] Exact match: {s}\n", .{plugin.name.items});
             return;
         }
     }
+
+    while (names.peek() != null) {
+        const name = names.next().?;
+        const bestMatch = try getBestMatch(allocator, name, scraper);
+        std.debug.print("[+] Best match: {s}\n", .{bestMatch});
+    }
 }
+
+pub fn getBestMatch(allocator: std.mem.Allocator, pluginName: []const u8, scraper: Scraper) ![]const u8 {
+    var rank = std.ArrayList(NameRanking).init(allocator);
+    defer rank.deinit();
+
+    const lowerPluginName = try std.ascii.allocLowerString(allocator, pluginName);
+    defer allocator.free(lowerPluginName);
+
+    for (scraper.plugins.?.items) |plugin| {
+        var name_words = std.mem.splitAny(u8, plugin.name.items, " ");
+        while (name_words.peek() != null) {
+            const word = name_words.next().?;
+            const lowerWord = try std.ascii.allocLowerString(allocator, word);
+            defer allocator.free(lowerWord);
+            const distance = try levenshteinDistance(allocator, lowerWord, lowerPluginName);
+            try rank.append(NameRanking{ .word = word, .distance = distance });
+        }
+        var words_desc = std.mem.splitAny(u8, plugin.description.items, " ");
+        while (words_desc.peek() != null) {
+            const word = words_desc.next().?;
+            const lowerWord = try std.ascii.allocLowerString(allocator, word);
+            defer allocator.free(lowerWord);
+            const distance = try levenshteinDistance(allocator, lowerWord, lowerPluginName);
+            try rank.append(NameRanking{ .word = word, .distance = distance });
+        }
+
+        var creator_words = std.mem.splitAny(u8, plugin.creator.items, " ");
+        while (creator_words.peek() != null) {
+            const word = creator_words.next().?;
+            const lowerWord = try std.ascii.allocLowerString(allocator, word);
+            defer allocator.free(lowerWord);
+            const distance = try levenshteinDistance(allocator, lowerWord, lowerPluginName);
+            try rank.append(NameRanking{ .word = word, .distance = distance });
+        }
+    }
+
+    std.mem.sort(NameRanking, rank.items, {}, lessThen);
+    return rank.items[0].word;
+}
+
+pub fn lessThen(context: void, self: NameRanking, other: NameRanking) bool {
+    _ = context;
+    return self.distance < other.distance;
+}
+
+const NameRanking = struct {
+    word: []const u8,
+    distance: u16,
+};
 
 const Plugin = struct {
     name: std.ArrayList(u8),
@@ -89,19 +180,26 @@ const Scraper = struct {
 
     pub fn scrape(self: *Scraper) !void {
         std.debug.print("[+] scraping started\n", .{});
+        // Create a client
         var client = std.http.Client{
             .allocator = self.allocator,
         };
         defer client.deinit();
 
+        // Buffer for the response (README.md)
         var response = std.ArrayList(u8).init(self.allocator);
         defer response.deinit();
 
+        // Fetch the site
         const result = try client.fetch(.{
             .method = std.http.Method.GET,
             .location = .{ .url = site },
             .response_storage = .{ .dynamic = &response },
         });
+
+        if (debug) {
+            std.debug.print("[DEBUG] Response status: {d}\n", .{result.status});
+        }
 
         if (result.status != std.http.Status.ok) {
             std.debug.print("[-] failed to fetch plugins", .{});
@@ -130,7 +228,6 @@ const Scraper = struct {
             try plugin_lines.appendSlice(line);
             try plugin_lines.appendSlice("\n");
         }
-
         std.debug.print("[+] found {d} plugins\n", .{1 + std.mem.count(u8, plugin_lines.items, "---")});
 
         var entries = std.mem.splitSequence(u8, plugin_lines.items, "---");
@@ -219,6 +316,7 @@ const Scraper = struct {
                 if (creatorLink == null) {
                     std.debug.print("[-] Missing creator link\n", .{});
                 }
+                std.debug.print("[+] Printing known information about missing plugin\n", .{});
                 if (name != null) {
                     std.debug.print("[-] Name: {s}\n", .{name.?});
                 }
@@ -273,3 +371,38 @@ const Scraper = struct {
         }
     }
 };
+
+inline fn idx(i: usize, j: usize, cols: usize) usize {
+    return i * cols + j;
+}
+
+pub fn levenshteinDistance(allocator: std.mem.Allocator, a: []const u8, b: []const u8) !u16 {
+    const n = a.len;
+    const m = b.len;
+    const table = try allocator.alloc(u8, n * m);
+    defer allocator.free(table);
+    table[0] = 0;
+
+    for (0..n) |i| {
+        for (0..m) |j| {
+            table[idx(i, j, m)] = @min(
+                (if (i == 0)
+                    @as(u8, @truncate(j))
+                else
+                    table[idx(i - 1, j, m)]) + 1,
+                (if (j == 0)
+                    @as(u8, @truncate(i))
+                else
+                    table[idx(i, j - 1, m)]) + 1,
+                (if (i == 0)
+                    @as(u8, @truncate(j))
+                else if (j == 0)
+                    @as(u8, @truncate(i))
+                else
+                    table[idx(i - 1, j - 1, m)]) +
+                    @intFromBool(a[i] != b[j]),
+            );
+        }
+    }
+    return table[table.len - 1];
+}
