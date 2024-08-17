@@ -5,7 +5,7 @@ const user_sraper = @import("user-scraper.zig");
 const eql = std.mem.eql;
 
 const site = "https://raw.githubusercontent.com/RusherDevelopment/rusherhack-plugins/main/README.md";
-var debug = false;
+pub var debug = false;
 
 pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     // Initialize the configuration
