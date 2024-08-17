@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const config = @import("config.zig");
+const user_sraper = @import("user-scraper.zig");
 const eql = std.mem.eql;
 
 const site = "https://raw.githubusercontent.com/RusherDevelopment/rusherhack-plugins/main/README.md";
@@ -60,14 +61,13 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     }
 
     var names = std.mem.splitAny(u8, pluginName, " ");
-
     for (scraper.plugins.?.items) |plugin| {
         if (plugin.name.items.len == 0) {
             continue;
         }
+
         var lowerPluginNameArray = std.ArrayList(u8).init(allocator);
         defer lowerPluginNameArray.deinit();
-
         {
             const lowerPluginName = try std.ascii.allocLowerString(allocator, plugin.name.items);
             defer allocator.free(lowerPluginName);
@@ -91,6 +91,8 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
             std.debug.print("[+] Creator: {s}\n", .{plugin.creator.items});
             std.debug.print("[+] Creator link: {s}\n", .{plugin.creatorLink.items});
             std.debug.print("[+] URL: {s}\n", .{plugin.url.items});
+
+            try user_sraper.scraper(allocator, plugin);
 
             return;
         }
@@ -136,7 +138,8 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     std.debug.print("[+] Creator: {s}\n", .{ranks.items[0].plugin.creator.items});
     std.debug.print("[+] Creator link: {s}\n", .{ranks.items[0].plugin.creatorLink.items});
     std.debug.print("[+] URL: {s}\n", .{ranks.items[0].plugin.url.items});
-    // TODO call the download parser
+
+    try user_sraper.scraper(allocator, ranks.items[0].plugin);
 }
 
 const PluginRank = struct {
@@ -228,12 +231,22 @@ const NameRanking = struct {
     distance: u16,
 };
 
-const Plugin = struct {
+pub const Plugin = struct {
     name: std.ArrayList(u8),
     description: std.ArrayList(u8),
     url: std.ArrayList(u8),
     creator: std.ArrayList(u8),
     creatorLink: std.ArrayList(u8),
+
+    pub fn init(allocator: std.mem.Allocator) Plugin {
+        return Plugin{
+            .name = std.ArrayList(u8).init(allocator),
+            .description = std.ArrayList(u8).init(allocator),
+            .url = std.ArrayList(u8).init(allocator),
+            .creator = std.ArrayList(u8).init(allocator),
+            .creatorLink = std.ArrayList(u8).init(allocator),
+        };
+    }
 
     pub fn deinit(self: *Plugin) void {
         self.name.deinit();
