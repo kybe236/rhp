@@ -31,21 +31,27 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         }
     }
 
+    // Initialize the scraper
     var scraper = Scraper.init(allocator);
     defer scraper.deinit();
     try scraper.scrape();
 
     // Make the lower name lowercase and remove newlines
-    const lowerName = try std.ascii.allocLowerString(allocator, pluginName);
     var lowerNameArray = std.ArrayList(u8).init(allocator);
     defer lowerNameArray.deinit();
-    for (lowerName) |c| {
-        if (c == '\n' or c == '\r') {
-            continue;
+    {
+        const lowerName = try std.ascii.allocLowerString(allocator, pluginName);
+        defer allocator.free(lowerName);
+        if (debug) {
+            std.debug.print("[DEBUG] Lower name: {s}\n", .{lowerNameArray.items});
         }
-        try lowerNameArray.append(c);
+        for (lowerName) |c| {
+            if (c == '\n' or c == '\r') {
+                continue;
+            }
+            try lowerNameArray.append(c);
+        }
     }
-    defer allocator.free(lowerName);
 
     // If theres no plugins return
     if (scraper.plugins == null) {
@@ -66,7 +72,7 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
             const lowerPluginName = try std.ascii.allocLowerString(allocator, plugin.name.items);
             defer allocator.free(lowerPluginName);
             for (lowerPluginName) |c| {
-                if (c == ' ' or c == '\n' or c == '\r') {
+                if (c == '\n' or c == '\r') {
                     continue;
                 }
                 try lowerPluginNameArray.append(c);
@@ -81,15 +87,90 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         // Alow 1 typo for exact match
         if (try levenshteinDistance(allocator, lowerPluginNameArray.items, lowerNameArray.items) < 2) {
             std.debug.print("[+] Exact match: {s}\n", .{plugin.name.items});
+            std.debug.print("[+] Description: {s}\n", .{plugin.description.items});
+            std.debug.print("[+] Creator: {s}\n", .{plugin.creator.items});
+            std.debug.print("[+] Creator link: {s}\n", .{plugin.creatorLink.items});
+            std.debug.print("[+] URL: {s}\n", .{plugin.url.items});
+
             return;
         }
     }
 
+    var bestMatch = std.ArrayList(u8).init(allocator);
+    defer bestMatch.deinit();
+
     while (names.peek() != null) {
         const name = names.next().?;
-        const bestMatch = try getBestMatch(allocator, name, scraper);
-        std.debug.print("[+] Best match: {s}\n", .{bestMatch});
+        const match = try getBestMatch(allocator, name, scraper);
+        try bestMatch.appendSlice(match);
+        try bestMatch.appendSlice(" ");
     }
+
+    var bestMatchStr = std.mem.splitAny(u8, bestMatch.items, " ");
+    var ranks = std.ArrayList(PluginRank).init(allocator);
+    defer ranks.deinit();
+
+    while (bestMatchStr.peek() != null) {
+        const word = bestMatchStr.next().?;
+
+        for (scraper.plugins.?.items) |plugin| {
+            var rank = PluginRank{
+                .plugin = plugin,
+                .ocurrences = 0,
+            };
+            rank.countOcurrences(word);
+            try ranks.append(rank);
+        }
+
+        std.mem.sort(PluginRank, ranks.items, {}, lessThenRank);
+    }
+    std.mem.sort(PluginRank, ranks.items, {}, lessThenRank);
+
+    if (ranks.items[0].ocurrences == 0) {
+        std.debug.print("[-] No plugins found\n", .{});
+        return;
+    }
+
+    std.debug.print("[+] Best match for {s} is {s}\n", .{ pluginName, ranks.items[0].plugin.name.items });
+    std.debug.print("[+] Description: {s}\n", .{ranks.items[0].plugin.description.items});
+    std.debug.print("[+] Creator: {s}\n", .{ranks.items[0].plugin.creator.items});
+    std.debug.print("[+] Creator link: {s}\n", .{ranks.items[0].plugin.creatorLink.items});
+    std.debug.print("[+] URL: {s}\n", .{ranks.items[0].plugin.url.items});
+    // TODO call the download parser
+}
+
+const PluginRank = struct {
+    plugin: Plugin,
+    ocurrences: u16,
+
+    pub fn countOcurrences(self: *PluginRank, word: []const u8) void {
+        var words = std.mem.splitAny(u8, self.plugin.name.items, " ");
+        while (words.peek() != null) {
+            const w = words.next().?;
+            if (eql(u8, w, word)) {
+                self.ocurrences += 1;
+            }
+        }
+        var words_desc = std.mem.splitAny(u8, self.plugin.description.items, " ");
+        while (words_desc.peek() != null) {
+            const w = words_desc.next().?;
+            if (eql(u8, w, word)) {
+                self.ocurrences += 1;
+            }
+        }
+        var words_creator = std.mem.splitAny(u8, self.plugin.creator.items, " ");
+        while (words_creator.peek() != null) {
+            const w = words_creator.next().?;
+            if (eql(u8, w, word)) {
+                self.ocurrences += 1;
+            }
+        }
+    }
+};
+
+pub fn lessThenRank(context: void, self: PluginRank, other: PluginRank) bool {
+    _ = context;
+    return self.ocurrences > other.ocurrences;
 }
 
 pub fn getBestMatch(allocator: std.mem.Allocator, pluginName: []const u8, scraper: Scraper) ![]const u8 {
@@ -103,6 +184,8 @@ pub fn getBestMatch(allocator: std.mem.Allocator, pluginName: []const u8, scrape
         var name_words = std.mem.splitAny(u8, plugin.name.items, " ");
         while (name_words.peek() != null) {
             const word = name_words.next().?;
+
+            // Get distance based on lowecased words
             const lowerWord = try std.ascii.allocLowerString(allocator, word);
             defer allocator.free(lowerWord);
             const distance = try levenshteinDistance(allocator, lowerWord, lowerPluginName);
@@ -111,6 +194,8 @@ pub fn getBestMatch(allocator: std.mem.Allocator, pluginName: []const u8, scrape
         var words_desc = std.mem.splitAny(u8, plugin.description.items, " ");
         while (words_desc.peek() != null) {
             const word = words_desc.next().?;
+
+            // Get distance based on lowecased words
             const lowerWord = try std.ascii.allocLowerString(allocator, word);
             defer allocator.free(lowerWord);
             const distance = try levenshteinDistance(allocator, lowerWord, lowerPluginName);
@@ -120,6 +205,8 @@ pub fn getBestMatch(allocator: std.mem.Allocator, pluginName: []const u8, scrape
         var creator_words = std.mem.splitAny(u8, plugin.creator.items, " ");
         while (creator_words.peek() != null) {
             const word = creator_words.next().?;
+
+            // Get distance based on lowecased words
             const lowerWord = try std.ascii.allocLowerString(allocator, word);
             defer allocator.free(lowerWord);
             const distance = try levenshteinDistance(allocator, lowerWord, lowerPluginName);
