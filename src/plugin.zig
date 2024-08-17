@@ -62,14 +62,16 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         var lowerPluginNameArray = std.ArrayList(u8).init(allocator);
         defer lowerPluginNameArray.deinit();
 
-        const lowerPluginName = try std.ascii.allocLowerString(allocator, plugin.name.items);
-        for (lowerPluginName) |c| {
-            if (c == ' ' or c == '\n' or c == '\r') {
-                continue;
+        {
+            const lowerPluginName = try std.ascii.allocLowerString(allocator, plugin.name.items);
+            defer allocator.free(lowerPluginName);
+            for (lowerPluginName) |c| {
+                if (c == ' ' or c == '\n' or c == '\r') {
+                    continue;
+                }
+                try lowerPluginNameArray.append(c);
             }
-            try lowerPluginNameArray.append(c);
         }
-        defer allocator.free(lowerPluginName);
 
         // Debug stuff
         if (debug) {
