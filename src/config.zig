@@ -1,19 +1,43 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const eql = std.mem.eql;
+const plugin_l = @import("plugin");
 
 const config_folder = "/.rhp";
 const config_file = "config";
 
+/// A config struct that holds the configuration of the program
+/// Intialize the struct via Config.init(allocator) and deinitialize it via Config.deinit()
+/// Save the configuration to the config file via Config.save(allocator) and load it via Config.load(allocator)
+/// Set a key to a value via Config.set(key, value, allocator) and get a value via Config.get(key)
+///
+/// Fields:
+/// - mc_path: The path to the minecraft folder
+/// - subnames: If the folder has subnames for instances
+/// - cfg: If theres an cfg file for each instance
+///
+/// Save Location:
+/// Windows: %APPDATA%/.rhp/config
+/// Linux: $HOME/.rhp/config
+/// MacOS: $HOME/.rhp/config
 pub const Config = struct {
     /// The path to the minecraft folder
+    /// Example:
+    /// Winows:
     mc_path: std.ArrayList(u8),
     /// If the folder has subnames for instances
+    /// Example:
+    /// mc_path/instance_name/.minecraft
     subnames: bool,
     /// If theres an cfg file for each instance
+    /// Example:
+    /// mc_path/instance_name/instance.cfg
+    /// or if subnames is disabled
+    /// mc_path/instance.cfg
     cfg: bool,
 
     /// Initialize the struct with the allocator
+    /// defer needs to bee called after your done using the struct
     pub fn init(allocator: std.mem.Allocator) Config {
         return Config{
             .mc_path = std.ArrayList(u8).init(allocator),
@@ -37,51 +61,51 @@ pub const Config = struct {
     /// - ErrorSet.AppdataNotFound if %APPDATA% is not defined
     /// - ErrorSet.OsNotSupported if the OS is not supported
     pub fn save(self: *Config, allocator: std.mem.Allocator) !void {
+        // Get $HOME or %APPDATA% depending on the OS
+        // Return if the OS is not supported
         var path = try GetAppdataPath(allocator);
         try path.appendSlice(config_folder);
         defer path.deinit();
 
-        std.fs.makeDirAbsolute(path.items) catch |err| { // Create the folder and handle errors
-            if (err == std.posix.MakeDirError.PathAlreadyExists) {} else {
+        // Create the folder if it doesn't exist
+        std.fs.makeDirAbsolute(path.items) catch |err| {
+            if (err != std.posix.MakeDirError.PathAlreadyExists) {
                 // Return if error creating folder
                 std.debug.print("[-] Error creating config folder\n", .{});
                 return err;
             }
         };
-        const folder = std.fs.openDirAbsolute(path.items, .{ .access_sub_paths = true }) catch { // Open the folder that already exists or got created above
+        // Open the folder with sub paths for the file
+        const folder = std.fs.openDirAbsolute(path.items, .{ .access_sub_paths = true }) catch |err| { // Open the folder that already exists or got created above
             // Return if error opening folder
             std.debug.print("[-] Error opening config folder\n", .{});
-            return;
+            return err;
         };
 
-        var file = folder.createFile(config_file, .{ .read = true }) catch |err| { // Create the file with relative path
+        // Create the file with read permissions
+        // Write permissions are not needed as we only read and write once
+        var file = folder.createFile(config_file, .{}) catch |err| {
             if (err == std.fs.File.OpenError.PathAlreadyExists) {
                 // Don't return if file already exists
                 std.debug.print("[+] File already exists continuing\n", .{});
             }
             // Return if error creating file
-            std.debug.print("[-] Error creating config file {s}{s}\n", .{ path.items, config_file });
-            std.debug.print("[-] Posix path: {s}\n", .{try std.posix.toPosixPath(config_file)});
+            std.debug.print("[-] Error creating config file {s} in {s}\n", .{ config_file, path.items });
             return err;
         };
-        defer file.close(); // Close the file after done
-
-        const mc_path = self.mc_path.items; // Get the mc_path as a slice
-
-        const subnames = if (self.subnames) "true" else "false"; // if its on its: "subnames: true" else: "subnames: false"
-        const cfg = if (self.cfg) "true" else "false"; // if its on its: "cfg: true" else: "cfg: false"
+        // defer to close the file after done
+        defer file.close();
 
         const write = file.writer(); // Get an writer to write to the file
 
-        // maybe im gona find a cleaner way
         _ = try write.write("mc_path: ");
-        _ = try write.write(mc_path);
+        _ = try write.write(self.mc_path.items);
         _ = try write.write("\n");
         _ = try write.write("subnames: ");
-        _ = try write.write(subnames);
+        _ = try write.write(if (self.subnames) "true" else "false");
         _ = try write.write("\n");
         _ = try write.write("cfg: ");
-        _ = try write.write(cfg);
+        _ = try write.write(if (self.cfg) "true" else "false");
     }
 
     /// Load the configuration from the config file
@@ -94,49 +118,72 @@ pub const Config = struct {
     /// - ErrorSet.AppdataNotFound if %APPDATA% is not defined
     /// - ErrorSet.OsNotSupported if the OS is not supported
     pub fn load(self: *Config, allocator: std.mem.Allocator) !void {
+        // Get $HOME or %APPDATA% depending on the OS
         var path = try GetAppdataPath(allocator);
         try path.appendSlice(config_folder);
         defer path.deinit();
 
-        // Open the folder should not create the folder
+        // Open the folder
+        // Should not create the folder because it means it isn't configured
         var folder = std.fs.openDirAbsolute(path.items, .{}) catch |err| {
-            std.debug.print("[-] Error opening config folder\n", .{});
-            std.debug.print("[-] Please run with --config to configure\n", .{});
+            const msg =
+                \\[-] Error opening config folder
+                \\[-] Please run with --config to configure\n;
+            ;
+            // Print the error message and return the error
+            std.debug.print("{s}", .{msg});
             return err;
         };
-        defer folder.close(); // Close the folder after done
+        // Close the folder after done
+        defer folder.close();
         std.debug.print("[+] Folder opened\n", .{});
 
         // Open the file should not create the file
         var file = folder.openFile(config_file, .{ .mode = .read_only }) catch |err| {
-            std.debug.print("[-] Error opening config file\n", .{});
-            std.debug.print("[-] Please run with --config to configure\n", .{});
+            const msg =
+                \\[-] Error opening config file
+                \\[-] Please run with --config to configure\n;
+            ;
+            // Print the error message and return the error
+            std.debug.print("{s}", .{msg});
             return err;
         };
-        defer file.close(); // Close the file after done
-        std.debug.print("[+] File openened\n", .{});
+        // closing the file after done
+        defer file.close();
+        std.debug.print("\r[+] File openened\n", .{});
 
+        // Read the file
         const data = try file.readToEndAlloc(allocator, 100000);
         defer allocator.free(data);
 
+        // Get each line of the file
         var lines = std.mem.splitAny(u8, data, "\n");
 
+        // Loop through each line
         while (lines.peek() != null) {
-            const line = lines.next().?; // Get the line
+            const line = lines.next().?;
+
+            // Split the line by spaces
             var parts = std.mem.splitAny(u8, line, " "); // Split the line by spaces
 
-            const key = parts.next(); // Get the key
-            const value = parts.next(); // Get the value
+            // Get the key and value
+            // Format: <key>: <value>
+            const key = parts.next();
+            const value = parts.next();
 
+            // Check if the key or value is null
             if (key == null) {
+                std.debug.print("[-] Key is null\n", .{});
                 continue;
             }
             if (value == null) {
+                std.debug.print("[-] Value is null\n", .{});
                 continue;
             }
 
+            // Check keys and set values accordingly
             if (eql(u8, key.?, "mc_path:")) {
-                self.mc_path.items = "";
+                try self.mc_path.resize(0);
                 try self.mc_path.appendSlice(value.?);
             } else if (eql(u8, key.?, "subnames:")) {
                 if (eql(u8, value.?, "true")) {
@@ -151,39 +198,72 @@ pub const Config = struct {
                     self.cfg = false;
                 }
             } else {
+                // Print if its an invalid key
                 std.debug.print("[-] Unknown key: {s}\n", .{key.?});
             }
         }
 
+        // Inform the user that the config was loaded
         std.debug.print("[+] Config loaded\n", .{});
     }
 
     /// Set the key to the value
     /// - key: The key to set
     /// - value: The value to set
+    /// - allocator: The allocator to use
+    ///
+    /// Shorthands for mc_path:
+    /// - Windows:
+    ///    - PrismLauncher: %APPDATA%/PrismLauncher/instances
+    ///    - Official: %APPDATA%/.minecraft
+    /// - Linux:
+    ///   - PrismLauncher: $HOME/.local/share/PrismLauncher/instances
+    ///   - MultiMC: $HOME/.local/share/multimc/instances
+    ///   - Official: $HOME/.minecraft
+    /// - MacOS:
+    ///   - PrismLauncher: $HOME/.local/share/PrismLauncher/instances
+    ///   - MultiMC: $HOME/.local/share/multimc/instances
+    ///   - Official: $HOME/.minecraft
     pub fn set(self: *Config, key: [:0]u8, value: [:0]u8, allocator: std.mem.Allocator) !void {
+        // Check the key and set the value accordingly
         if (eql(u8, key, "mc_path")) {
-            if (eql(u8, value, "prismlauncher")) {
+            var lower_value = std.ArrayList(u8).init(allocator);
+            defer lower_value.deinit();
+            {
+                const lower_name = try std.ascii.allocLowerString(allocator, value);
+                defer allocator.free(lower_name);
+                for (lower_name) |c| {
+                    if (c == '\n' or c == '\r') {
+                        continue;
+                    }
+                    try lower_value.append(c);
+                }
+            }
+            if (eql(u8, lower_value.items, "prismlauncher")) {
                 var env = try GetAppdataPath(allocator);
                 switch (builtin.os.tag) {
                     .linux, .macos => {
                         try env.appendSlice("/.local/share/PrismLauncher/instances");
                         self.mc_path = env;
+                        std.debug.print("set mc_path to {s}\n", .{env.items});
                     },
                     .windows => {
                         try env.appendSlice("PrismLauncher/instances");
                         self.mc_path = env;
+                        std.debug.print("set mc_path to {s}\n", .{env.items});
                     },
                     else => {
                         std.debug.print("OS not supported\n", .{});
                         return;
                     },
                 }
-            } else if (eql(u8, value, "multimc")) {
+            } else if (eql(u8, lower_value.items, "multimc")) {
                 var env = try GetAppdataPath(allocator);
                 switch (builtin.os.tag) {
                     .linux, .macos => {
                         try env.appendSlice("/.local/share/multimc/instances");
+                        self.mc_path = env;
+                        std.debug.print("set mc_path to {s}\n", .{env.items});
                     },
                     .windows => {
                         std.debug.print("[-] MultiMC has no default path on Windows\n", .{});
@@ -193,16 +273,18 @@ pub const Config = struct {
                         return;
                     },
                 }
-            } else if (eql(u8, value, "official")) {
+            } else if (eql(u8, lower_value.items, "official")) {
                 var env = try GetAppdataPath(allocator);
                 switch (builtin.os.tag) {
                     .linux, .macos => {
                         try env.appendSlice("/.minecraft");
                         self.mc_path = env;
+                        std.debug.print("set mc_path to {s}\n", .{env.items});
                     },
                     .windows => {
                         try env.appendSlice("/.minecraft");
                         self.mc_path = env;
+                        std.debug.print("set mc_path to {s}\n", .{env.items});
                     },
                     else => {
                         std.debug.print("OS not supported\n", .{});
@@ -210,26 +292,16 @@ pub const Config = struct {
                     },
                 }
             } else {
-                self.mc_path.items = "";
+                try self.mc_path.resize(0);
                 try self.mc_path.appendSlice(value);
+                std.debug.print("set mc_path to {s}\n", .{value});
             }
-            std.debug.print("[+] mc_path set to {s}\n", .{value});
         } else if (eql(u8, key, "subnames")) {
-            if (eql(u8, value, "true")) {
-                self.subnames = true;
-                std.debug.print("[+] subnames set to true\n", .{});
-            } else {
-                self.subnames = false;
-                std.debug.print("[+] subnames set to false\n", .{});
-            }
+            self.subnames = if (eql(u8, value, "true")) true else false;
+            std.debug.print("[+] subnames set to {s}\n", .{value});
         } else if (eql(u8, key, "cfg")) {
-            if (eql(u8, value, "true")) {
-                self.cfg = true;
-                std.debug.print("[+] cfg set to true\n", .{});
-            } else {
-                self.cfg = false;
-                std.debug.print("[+] cfg set to false\n", .{});
-            }
+            self.cfg = if (eql(u8, value, "true")) true else false;
+            std.debug.print("[+] cfg set to {s}\n", .{value});
         } else {
             std.debug.print("[-] Unknown key: {s}\n", .{key});
         }
@@ -241,19 +313,11 @@ pub const Config = struct {
         if (std.mem.eql(u8, key, "mc_path")) {
             return self.mc_path.items;
         } else if (std.mem.eql(u8, key, "subnames")) {
-            if (self.subnames) {
-                return "true"[0..];
-            } else {
-                return "false"[0..];
-            }
+            if (self.subnames) return "true" else return "false";
         } else if (std.mem.eql(u8, key, "cfg")) {
-            if (self.cfg) {
-                return "true"[0..];
-            } else {
-                return "false"[0..];
-            }
+            if (self.cfg) return "true" else return "false";
         } else {
-            return "Unknown key"[0..];
+            return "Unknown key";
         }
     }
 };
@@ -264,6 +328,15 @@ const ErrorSet = error{
     OsNotSupported,
 };
 
+/// Get the path to the appdata folder
+/// Windows: %APPDATA%
+/// Linux: $HOME
+/// MacOS: $HOME
+///
+/// Custom Errors:
+/// - ErrorSet.HomeNotFound if $HOME is not defined
+/// - ErrorSet.AppdataNotFound if %APPDATA% is not defined
+/// - ErrorSet.OsNotSupported if the OS is not supported
 pub fn GetAppdataPath(allocator: std.mem.Allocator) !std.ArrayList(u8) {
     var env = try std.process.getEnvMap(allocator); // Get the environment variables
     defer env.deinit(); // Deinit the environment variables
