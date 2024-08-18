@@ -12,10 +12,12 @@ const usage =
     \\ 
 ;
 const msg =
-    \\[-] Missing key or value
+    \\Missing key or value
     \\Usage: --config set <key> <value>
     \\key are mc_path, subnames, cfg
 ;
+
+const cli_loger = std.log.scoped(.cli);
 
 // The main function for the cli
 pub fn handle(allocator: std.mem.Allocator, args: [][:0]u8) !void {
@@ -77,11 +79,11 @@ const Configure = struct {
     pub fn set(self: *Configure) !void {
         // --config set <key> <value>
         if (self.args.len < 5) {
-            std.debug.print("{s}", .{msg});
+            cli_loger.err("{s}", .{msg});
             return;
         }
         if (self.args.len > 5) {
-            std.debug.print("{s}", .{msg});
+            cli_loger.err("{s}", .{msg});
             return;
         }
         const key = self.args[3];
@@ -92,38 +94,42 @@ const Configure = struct {
     pub fn get(self: *Configure) !void {
         // --config get <key>
         if (self.args.len < 4) {
-            std.debug.print("[-] Missing key\n", .{});
+            cli_loger.err("Missing key\n", .{});
             return;
         }
         if (self.args.len > 4) {
-            std.debug.print("[-] Too many arguments\n", .{});
+            cli_loger.err("Too many arguments\n", .{});
             return;
         }
         const key = self.args[3];
         try self.config.load(self.allocator);
         const value = self.config.get(key);
-        std.debug.print("{s}: {s}\n", .{ key, value });
+        const stdout = std.io.getStdOut().writer();
+        try stdout.print("{s}: {s}\n", .{ key, value });
     }
 
     pub fn setup(self: *Configure) !void {
         // --config setup
         if (self.args.len > 3) {
-            std.debug.print("[-] Too many arguments\n", .{});
-            std.debug.print("Usage: --config setup\n", .{});
+            cli_loger.err("Too many arguments\n", .{});
+            cli_loger.err("Usage: --config setup\n", .{});
             return;
         }
-        std.debug.print("[+] Setting up rhp\n", .{});
-        std.debug.print("Select a launcher:\n", .{});
-        std.debug.print("1. Official\n", .{});
-        std.debug.print("2. MultiMC (For windows use custom path)\n", .{});
-        std.debug.print("3. PrismLauncher\n", .{});
-        std.debug.print("4. Custom Path\n", .{});
-        std.debug.print("Enter the number of the launcher: ", .{});
+        const l_msg =
+            \\Select a launcher:
+            \\1. Official
+            \\2. MultiMC (For windows use custom path)
+            \\3. PrismLauncher
+            \\4. Custom Path
+            \\Enter the number of the launcher:
+            \\-> 
+        ;
+        std.debug.print("{s}", .{l_msg});
 
         const input = try std.io.getStdIn().reader().readUntilDelimiterAlloc(self.allocator, '\n', 10000);
         defer self.allocator.free(input);
         if (input.len == 0) {
-            std.debug.print("[-] Invalid input\n", .{});
+            cli_loger.err("Invalid input\n", .{});
             return;
         }
         const launcher = Configure.getLauncher(input);
@@ -159,7 +165,7 @@ const Configure = struct {
                         try env.appendSlice("/.minecraft");
                     },
                     else => {
-                        std.debug.print("[-] Unsupported OS\n", .{});
+                        cli_loger.err("Unsupported OS\n", .{});
                         return null;
                     },
                 }
@@ -175,10 +181,11 @@ const Configure = struct {
                         try env.appendSlice("/.local/share/multimc");
                     },
                     .windows => {
-                        std.debug.print("Use Custom path instead because theres no default: ", .{});
+                        cli_loger.err("Use Custom path instead because theres no default: ", .{});
+                        return null;
                     },
                     else => {
-                        std.debug.print("[-] Unsupported OS\n", .{});
+                        cli_loger.err("Unsupported OS\n", .{});
                         return null;
                     },
                 }
@@ -195,10 +202,11 @@ const Configure = struct {
                         try env.appendSlice("/.local/share/PrismLauncher");
                     },
                     .windows => {
-                        std.debug.print("Use Custom path instead because theres no default: ", .{});
+                        cli_loger.err("Use Custom path instead because theres no default: ", .{});
+                        return null;
                     },
                     else => {
-                        std.debug.print("[-] Unsupported OS\n", .{});
+                        cli_loger.err("Unsupported OS\n", .{});
                         return null;
                     },
                 }
@@ -206,22 +214,22 @@ const Configure = struct {
                 self.config.mc_path = env;
             },
             Launcher.CustomPath => {
-                std.debug.print("Enter the path to the launcher: ", .{});
+                std.debug.print("Enter the path to the launcher:\n-> ", .{});
                 const input = try std.io.getStdIn().reader().readUntilDelimiterAlloc(self.allocator, '\n', 10000);
                 defer self.allocator.free(input);
                 if (input.len == 0) {
-                    std.debug.print("[-] Invalid input\n", .{});
+                    cli_loger.err("Invalid input\n", .{});
                     return;
                 }
                 var env = try config.GetAppdataPath(self.allocator);
                 try env.appendSlice(input);
                 self.config.mc_path = env;
 
-                std.debug.print("Does your launcher use subnames? (y/n): ", .{});
+                std.debug.print("Does your launcher use subnames? (y/n):\n-> ", .{});
                 const subnames = try std.io.getStdIn().reader().readUntilDelimiterAlloc(self.allocator, '\n', 10000);
                 defer self.allocator.free(subnames);
                 if (subnames.len == 0) {
-                    std.debug.print("[-] Invalid input\n", .{});
+                    cli_loger.err("Invalid input\n", .{});
                     return;
                 }
                 if (eql(u8, subnames, "y")) {
@@ -230,11 +238,11 @@ const Configure = struct {
                     self.config.subnames = false;
                 }
 
-                std.debug.print("Does your launcher use cfg files? (y/n): ", .{});
+                std.debug.print("Does your launcher use cfg files? (y/n):\n-> ", .{});
                 const cfg = try std.io.getStdIn().reader().readUntilDelimiterAlloc(self.allocator, '\n', 10000);
                 defer self.allocator.free(cfg);
                 if (cfg.len == 0) {
-                    std.debug.print("[-] Invalid input\n", .{});
+                    cli_loger.err("Invalid input\n", .{});
                     return;
                 }
                 if (eql(u8, cfg, "y")) {
@@ -243,7 +251,7 @@ const Configure = struct {
                     self.config.cfg = false;
                 }
 
-                std.debug.print("[+] Setup complete", .{});
+                cli_loger.info("Setup complete", .{});
             },
         }
     }

@@ -73,7 +73,7 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 
         // Debug stuff
         if (std.options.log_level == .debug) {
-            plugin_log.debug("[DEBUG] Comparing {s} with {s}\n", .{ lowerNameArray.items, lowerPluginNameArray.items });
+            plugin_log.debug("Comparing {s} with {s}\n", .{ lowerNameArray.items, lowerPluginNameArray.items });
         }
 
         // Alow 1 typo for exact match
@@ -317,7 +317,7 @@ const Scraper = struct {
             .response_storage = .{ .dynamic = &response },
         });
 
-        plugin_log.debug("[DEBUG] Response status: {d}\n", .{result.status});
+        plugin_log.debug("Response status: {d}\n", .{result.status});
 
         if (result.status != std.http.Status.ok) {
             plugin_log.err("failed to fetch plugins\n", .{});
