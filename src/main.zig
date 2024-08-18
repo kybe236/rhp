@@ -9,6 +9,9 @@ const leakmsg =
     \\ Please also append debug if your're running a plugin install
     \\ Thank you for your cooperation
 ;
+
+pub const log_level: std.log.Level = .info;
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer if (gpa.deinit() == .leak) {
@@ -17,7 +20,14 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args); // Free args after use
+    defer std.process.argsFree(allocator, args);
+
+    var env = try std.process.getEnvMap(allocator);
+    defer env.deinit();
+    const debug = try env.get("DEBUG");
+    if (debug != null) {
+        log_level = .debug;
+    }
 
     // Print arguments
     std.debug.print("Arguments: ", .{});
