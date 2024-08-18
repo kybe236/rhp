@@ -10,7 +10,7 @@ const leakmsg =
     \\ Thank you for your cooperation
 ;
 
-pub const log_level: std.log.Level = .info;
+pub var log_level: std.log.Level = .info;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -24,7 +24,7 @@ pub fn main() !void {
 
     var env = try std.process.getEnvMap(allocator);
     defer env.deinit();
-    const debug = try env.get("DEBUG");
+    const debug = env.get("DEBUG");
     if (debug != null) {
         log_level = .debug;
     }
