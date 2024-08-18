@@ -43,9 +43,6 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     {
         const lowerName = try std.ascii.allocLowerString(allocator, pluginName);
         defer allocator.free(lowerName);
-        if (debug) {
-            std.debug.print("[DEBUG] Lower name: {s}\n", .{lowerNameArray.items});
-        }
         for (lowerName) |c| {
             if (c == '\n' or c == '\r') {
                 continue;
@@ -115,15 +112,33 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     std.debug.print("[+] Correcting to ", .{});
     while (bestMatchStr.peek() != null) {
         const word = bestMatchStr.next().?;
+
         std.debug.print("{s} ", .{word});
 
         for (scraper.plugins.?.items) |plugin| {
-            var rank = PluginRank{
-                .plugin = plugin,
-                .ocurrences = 0,
-            };
-            rank.countOcurrences(word);
-            try ranks.append(rank);
+            if (ranks.items.len == 0) {
+                var rank = PluginRank{
+                    .plugin = plugin,
+                    .ocurrences = 0,
+                };
+                rank.countOcurrences(word);
+                try ranks.append(rank);
+            } else {
+                for (ranks.items) |*rank| {
+                    if (eql(u8, rank.plugin.name.items, plugin.name.items)) {
+                        // Here i cant call it because i need mutiple rank
+                        rank.countOcurrences(word);
+                        break;
+                    }
+                } else {
+                    var rank = PluginRank{
+                        .plugin = plugin,
+                        .ocurrences = 0,
+                    };
+                    rank.countOcurrences(word);
+                    try ranks.append(rank);
+                }
+            }
         }
     }
     std.mem.sort(PluginRank, ranks.items, {}, lessThenRank);
@@ -134,7 +149,11 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         return;
     }
 
-    std.debug.print("[+] Best match for {s} is {s}\n", .{ pluginName, ranks.items[0].plugin.name.items });
+    if (debug) {
+        std.debug.print("[DEBUG] Best match: {d}\n", .{ranks.items[0].ocurrences});
+    }
+
+    std.debug.print("[+] Best match for \"{s}\" is \"{s}\"\n", .{ pluginName, ranks.items[0].plugin.name.items });
     std.debug.print("[+] Description: {s}\n", .{ranks.items[0].plugin.description.items});
     std.debug.print("[+] Creator: {s}\n", .{ranks.items[0].plugin.creator.items});
     std.debug.print("[+] Creator link: {s}\n", .{ranks.items[0].plugin.creatorLink.items});
