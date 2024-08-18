@@ -2,6 +2,8 @@ const std = @import("std");
 const config = @import("config.zig");
 const plugin_l = @import("plugin.zig");
 
+const log = std.log.scoped(.user_scraper);
+
 pub fn scraper(allocator: std.mem.Allocator, plugin: plugin_l.Plugin) !void {
     var download = try DownloadSite.init(allocator, plugin);
     try download.scrape(allocator);
@@ -33,18 +35,19 @@ const DownloadSite = struct {
         try self.getTag(allocator);
         if (self.url.items.len == 0) {
             // TODO add manually compiling maybe?
-            std.debug.print("[-] No release tag found", .{});
+            log.err("No release tag found", .{});
             return;
         }
 
         const tag_start = std.mem.indexOf(u8, self.url.items, "/tag/");
         if (tag_start == null) {
-            std.debug.print("[-] No release tag found", .{});
+            log.err("No release tag found", .{});
             return;
         }
         const tag = self.url.items[tag_start.? + 5 ..];
-        std.debug.print("[+] Tag: {s}\n", .{tag});
-        std.debug.print("[+] Latest Release URL: {s}\n", .{self.url.items});
+        const stdout = std.io.getStdOut().writer();
+        try stdout.print("TAG: {s}\n", .{tag});
+        try stdout.print("LATEST_RELEASE: {s}\n", .{self.url.items});
         try self.getDownloadLink(allocator, tag); // works fine if this is commented out
     }
 
@@ -69,14 +72,12 @@ const DownloadSite = struct {
             .response_storage = .{ .dynamic = &response },
         };
 
-        std.debug.print("[+] Fetching: {s}\n", .{self.downloadUrl.items});
+        log.info("Fetching: {s}\n", .{self.downloadUrl.items});
 
         // Fetch the releases page
         const result = try client.fetch(fetch_options);
 
-        if (plugin_l.debug) {
-            std.debug.print("[DEBUG] Status: {d}\n", .{result.status});
-        }
+        log.debug("Status: {d}\n", .{result.status});
     }
 
     fn getTag(self: *DownloadSite, allocator: std.mem.Allocator) !void {
@@ -94,9 +95,7 @@ const DownloadSite = struct {
         var rurl = std.ArrayList(u8).init(allocator);
         try rurl.appendSlice(self.plugin.url.items);
         try rurl.appendSlice("/releases");
-        if (plugin_l.debug) {
-            std.debug.print("[DEBUG] URL: {s}\n", .{rurl.items});
-        }
+        log.debug("URL: {s}\n", .{rurl.items});
         self.downloadUrl = rurl;
 
         // Save response to response
@@ -108,9 +107,7 @@ const DownloadSite = struct {
         // Fetch the releases page
         const result = try client.fetch(fetch_options);
 
-        if (plugin_l.debug) {
-            std.debug.print("[DEBUG] Result: {d}\n", .{result.status});
-        }
+        log.debug("Result: {d}\n", .{result.status});
 
         // Split the response into lines
         var lines = std.mem.splitAny(u8, response.items, "\n");
@@ -122,9 +119,7 @@ const DownloadSite = struct {
                 std.mem.indexOf(u8, line, "\" data-view-component=\"true\" class=\"Link--primary Link\">") != null and
                 std.mem.indexOf(u8, line, "</a></span>") != null)
             {
-                if (plugin_l.debug) {
-                    std.debug.print("[DEBUG] Line: {s}\n", .{line});
-                }
+                log.debug("Line: {s}\n", .{line});
                 const start = std.mem.indexOf(u8, line, "href=\"");
                 const end = std.mem.indexOf(u8, line, "\" data-view-component=\"true\" class=\"Link--primary Link\">");
                 if (start == null or end == null) {
