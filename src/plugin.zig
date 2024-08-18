@@ -6,6 +6,7 @@ const eql = std.mem.eql;
 
 const site = "https://raw.githubusercontent.com/RusherDevelopment/rusherhack-plugins/main/README.md";
 pub var debug = false;
+const plugin_log = std.log.scoped(.plugin);
 
 pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     // Initialize the configuration
@@ -16,20 +17,14 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 
     // Check if the user gave a plugin name
     if (args.len < 2) {
-        std.debug.print("[-] Missing plugin name\n", .{});
+        plugin_log.err("Missing plugin name\n", .{});
         return;
     }
 
     const pluginName = args[1];
     if (eql(u8, pluginName, "--help")) {
-        std.debug.print("Usage: rhp <plugin-name>\n", .{});
+        plugin_log.info("Usage: rhp <plugin-name>\n", .{});
         return;
-    }
-
-    if (args.len > 2) {
-        if (eql(u8, args[2], "debug")) {
-            debug = true;
-        }
     }
 
     // Initialize the scraper
@@ -53,7 +48,7 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 
     // If theres no plugins return
     if (scraper.plugins == null) {
-        std.debug.print("[-] No plugins found\n", .{});
+        plugin_log.err("No plugins found\n", .{});
         return;
     }
 
@@ -77,17 +72,19 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         }
 
         // Debug stuff
-        if (debug) {
-            std.debug.print("[DEBUG] Comparing {s} with {s}\n", .{ lowerNameArray.items, lowerPluginNameArray.items });
+        if (std.options.log_level == .debug) {
+            plugin_log.debug("[DEBUG] Comparing {s} with {s}\n", .{ lowerNameArray.items, lowerPluginNameArray.items });
         }
 
         // Alow 1 typo for exact match
         if (try levenshteinDistance(allocator, lowerPluginNameArray.items, lowerNameArray.items) < 2) {
-            std.debug.print("[+] Exact match: {s}\n", .{plugin.name.items});
-            std.debug.print("[+] Description: {s}\n", .{plugin.description.items});
-            std.debug.print("[+] Creator: {s}\n", .{plugin.creator.items});
-            std.debug.print("[+] Creator link: {s}\n", .{plugin.creatorLink.items});
-            std.debug.print("[+] URL: {s}\n", .{plugin.url.items});
+            const stdout = std.io.getStdOut().writer();
+
+            try stdout.print("Name: {s}\n", .{plugin.name.items});
+            try stdout.print("Description: {s}\n", .{plugin.description.items});
+            try stdout.print("Creator: {s}\n", .{plugin.creator.items});
+            try stdout.print("Creator link: {s}\n", .{plugin.creatorLink.items});
+            try stdout.print("URL: {s}\n", .{plugin.url.items});
 
             try user_sraper.scraper(allocator, plugin);
 
@@ -109,7 +106,7 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     var ranks = std.ArrayList(PluginRank).init(allocator);
     defer ranks.deinit();
 
-    std.debug.print("[+] Correcting to ", .{});
+    plugin_log.info("Correcting to ", .{});
     while (bestMatchStr.peek() != null) {
         const word = bestMatchStr.next().?;
 
@@ -145,19 +142,20 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     std.debug.print("\n", .{});
 
     if (ranks.items[0].ocurrences == 0) {
-        std.debug.print("[-] No plugins found\n", .{});
+        plugin_log.err("No plugins found\n", .{});
         return;
     }
 
-    if (debug) {
-        std.debug.print("[DEBUG] Best match: {d}\n", .{ranks.items[0].ocurrences});
-    }
+    plugin_log.debug("Best match: {d}\n", .{ranks.items[0].ocurrences});
 
-    std.debug.print("[+] Best match for \"{s}\" is \"{s}\"\n", .{ pluginName, ranks.items[0].plugin.name.items });
-    std.debug.print("[+] Description: {s}\n", .{ranks.items[0].plugin.description.items});
-    std.debug.print("[+] Creator: {s}\n", .{ranks.items[0].plugin.creator.items});
-    std.debug.print("[+] Creator link: {s}\n", .{ranks.items[0].plugin.creatorLink.items});
-    std.debug.print("[+] URL: {s}\n", .{ranks.items[0].plugin.url.items});
+    const stdout = std.io.getStdOut().writer();
+
+    // Print to stdout
+    try stdout.print("Name: {s}\n", .{ranks.items[0].plugin.name.items});
+    try stdout.print("Description: {s}\n", .{ranks.items[0].plugin.description.items});
+    try stdout.print("Creator: {s}\n", .{ranks.items[0].plugin.creator.items});
+    try stdout.print("Creator link: {s}\n", .{ranks.items[0].plugin.creatorLink.items});
+    try stdout.print("URL: {s}\n", .{ranks.items[0].plugin.url.items});
 
     try user_sraper.scraper(allocator, ranks.items[0].plugin);
 }
@@ -302,7 +300,6 @@ const Scraper = struct {
     }
 
     pub fn scrape(self: *Scraper) !void {
-        std.debug.print("[+] scraping started\n", .{});
         // Create a client
         var client = std.http.Client{
             .allocator = self.allocator,
@@ -320,13 +317,11 @@ const Scraper = struct {
             .response_storage = .{ .dynamic = &response },
         });
 
-        if (debug) {
-            std.debug.print("[DEBUG] Response status: {d}\n", .{result.status});
-        }
+        plugin_log.debug("[DEBUG] Response status: {d}\n", .{result.status});
 
         if (result.status != std.http.Status.ok) {
-            std.debug.print("[-] failed to fetch plugins", .{});
-            std.debug.print("[-] status code: {d}\n", .{result.status});
+            plugin_log.err("failed to fetch plugins\n", .{});
+            plugin_log.err("status code: {d}\n", .{result.status});
             return;
         }
 
@@ -351,7 +346,7 @@ const Scraper = struct {
             try plugin_lines.appendSlice(line);
             try plugin_lines.appendSlice("\n");
         }
-        std.debug.print("[+] found {d} plugins\n", .{1 + std.mem.count(u8, plugin_lines.items, "---")});
+        plugin_log.info("found {d} plugins\n", .{1 + std.mem.count(u8, plugin_lines.items, "---")});
 
         var entries = std.mem.splitSequence(u8, plugin_lines.items, "---");
 
@@ -421,39 +416,42 @@ const Scraper = struct {
 
             // Automatically report missing information
             if (name == null or githubLink == null or creator == null or description == null or creatorLink == null) {
+                const header =
+                    \\Detected missing information
+                    \\Please contact maintainer
+                ;
                 std.debug.print("--------------------------------------\n", .{});
-                std.debug.print("[-] Detected missing information\n", .{});
-                std.debug.print("[-] Please contact maintainer\n", .{});
+                plugin_log.warn(header, .{});
                 if (name == null) {
-                    std.debug.print("[-] Missing name\n", .{});
+                    plugin_log.warn("Missing name\n", .{});
                 }
                 if (githubLink == null) {
-                    std.debug.print("[-] Missing github link\n", .{});
+                    plugin_log.warn("Missing github link\n", .{});
                 }
                 if (creator == null) {
-                    std.debug.print("[-] Missing creator\n", .{});
+                    plugin_log.warn("Missing creator\n", .{});
                 }
                 if (description == null) {
-                    std.debug.print("[-] Missing description\n", .{});
+                    plugin_log.warn("Missing description\n", .{});
                 }
                 if (creatorLink == null) {
-                    std.debug.print("[-] Missing creator link\n", .{});
+                    plugin_log.warn("Missing creator link\n", .{});
                 }
-                std.debug.print("[+] Printing known information about missing plugin\n", .{});
+                plugin_log.info("Printing known information about missing plugin\n", .{});
                 if (name != null) {
-                    std.debug.print("[-] Name: {s}\n", .{name.?});
+                    plugin_log.warn("Name: {s}\n", .{name.?});
                 }
                 if (githubLink != null) {
-                    std.debug.print("[-] Github link: {s}\n", .{githubLink.?});
+                    plugin_log.warn("Github link: {s}\n", .{githubLink.?});
                 }
                 if (creator != null) {
-                    std.debug.print("[-] Creator: {s}\n", .{creator.?});
+                    plugin_log.warn("Creator: {s}\n", .{creator.?});
                 }
                 if (description != null) {
-                    std.debug.print("[-] Description: {s}\n", .{description.?});
+                    plugin_log.warn("Description: {s}\n", .{description.?});
                 }
                 if (creatorLink != null) {
-                    std.debug.print("[-] Creator link: {s}\n", .{creatorLink.?});
+                    plugin_log.warn("Creator link: {s}\n", .{creatorLink.?});
                 }
                 std.debug.print("--------------------------------------\n", .{});
             }
@@ -482,13 +480,11 @@ const Scraper = struct {
                 try plugin_struct.creatorLink.appendSlice(creatorLink.?);
             }
 
-            if (debug) {
-                std.debug.print("[DEBUG] Plugin name: {s}\n", .{plugin_struct.name.items});
-                std.debug.print("[DEBUG] Plugin description: {s}\n", .{plugin_struct.description.items});
-                std.debug.print("[DEBUG] Plugin creator: {s}\n", .{plugin_struct.creator.items});
-                std.debug.print("[DEBUG] Plugin creatorLink: {s}\n", .{plugin_struct.creatorLink.items});
-                std.debug.print("[DEBUG] Plugin URL: {s}\n", .{plugin_struct.url.items});
-            }
+            plugin_log.debug("Plugin name: {s}\n", .{plugin_struct.name.items});
+            plugin_log.debug("Plugin description: {s}\n", .{plugin_struct.description.items});
+            plugin_log.debug("Plugin creator: {s}\n", .{plugin_struct.creator.items});
+            plugin_log.debug("Plugin creatorLink: {s}\n", .{plugin_struct.creatorLink.items});
+            plugin_log.debug("Plugin URL: {s}\n", .{plugin_struct.url.items});
 
             try self.plugins.?.append(plugin_struct);
         }
