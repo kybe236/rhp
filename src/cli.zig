@@ -216,7 +216,6 @@ const Configure = struct {
                 var env = try config.GetAppdataPath(self.allocator);
                 try env.appendSlice(input);
                 self.config.mc_path = env;
-                std.debug.print("[+] Custom path set to {s}\n", .{input});
 
                 std.debug.print("Does your launcher use subnames? (y/n): ", .{});
                 const subnames = try std.io.getStdIn().reader().readUntilDelimiterAlloc(self.allocator, '\n', 10000);
@@ -227,10 +226,8 @@ const Configure = struct {
                 }
                 if (eql(u8, subnames, "y")) {
                     self.config.subnames = true;
-                    std.debug.print("[+] subnames set to true\n", .{});
                 } else {
                     self.config.subnames = false;
-                    std.debug.print("[+] subnames set to false\n", .{});
                 }
 
                 std.debug.print("Does your launcher use cfg files? (y/n): ", .{});
@@ -242,10 +239,8 @@ const Configure = struct {
                 }
                 if (eql(u8, cfg, "y")) {
                     self.config.cfg = true;
-                    std.debug.print("[+] cfg set to true\n", .{});
                 } else {
                     self.config.cfg = false;
-                    std.debug.print("[+] cfg set to false\n", .{});
                 }
 
                 std.debug.print("[+] Setup complete", .{});
