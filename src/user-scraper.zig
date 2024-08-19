@@ -4,21 +4,45 @@ const plugin_l = @import("plugin.zig");
 
 const log = std.log.scoped(.user_scraper);
 
-pub fn scraper(allocator: std.mem.Allocator, plugin: plugin_l.Plugin) !void {
+pub fn scraper(allocator: std.mem.Allocator, plugin: plugin_l.Plugin, config_a: config.Config) !void {
     var download = try DownloadSite.init(allocator, plugin);
+    download.config = config_a;
     try download.scrape(allocator);
     defer download.deinit();
 }
+
+const Asset = struct {
+    name: std.ArrayList(u8),
+    url: std.ArrayList(u8),
+    allocator: std.mem.Allocator,
+
+    pub fn deinit(self: *Asset) void {
+        self.name.deinit();
+        self.url.deinit();
+    }
+
+    pub fn init(allocator: std.mem.Allocator) Asset {
+        const self = Asset{
+            .name = std.ArrayList(u8).init(allocator),
+            .url = std.ArrayList(u8).init(allocator),
+            .allocator = allocator,
+        };
+        return self;
+    }
+};
 
 const DownloadSite = struct {
     plugin: plugin_l.Plugin,
     url: std.ArrayList(u8),
     downloadUrl: std.ArrayList(u8),
     allocator: std.mem.Allocator,
+    assets: std.ArrayList(u8),
+    config: ?config.Config,
 
     pub fn deinit(self: *DownloadSite) void {
         self.url.deinit();
         self.downloadUrl.deinit();
+        self.assets.deinit();
     }
 
     pub fn init(allocator: std.mem.Allocator, plugin: plugin_l.Plugin) !DownloadSite {
@@ -27,6 +51,8 @@ const DownloadSite = struct {
             .url = std.ArrayList(u8).init(allocator),
             .downloadUrl = std.ArrayList(u8).init(allocator),
             .allocator = allocator,
+            .assets = std.ArrayList(u8).init(allocator),
+            .config = null,
         };
         return self;
     }
@@ -34,7 +60,6 @@ const DownloadSite = struct {
     pub fn scrape(self: *DownloadSite, allocator: std.mem.Allocator) !void {
         try self.getTag(allocator);
         if (self.url.items.len == 0) {
-            // TODO add manually compiling maybe?
             log.err("No release tag found", .{});
             return;
         }
@@ -48,7 +73,170 @@ const DownloadSite = struct {
         const stdout = std.io.getStdOut().writer();
         try stdout.print("TAG: {s}\n", .{tag});
         try stdout.print("LATEST_RELEASE: {s}\n", .{self.url.items});
-        try self.getDownloadLink(allocator, tag); // works fine if this is commented out
+        try self.getDownloadLink(allocator, tag);
+
+        var assets = std.mem.splitAny(u8, self.assets.items, " ");
+        var assets_list = std.ArrayList(Asset).init(allocator);
+        defer assets_list.deinit();
+
+        var i: u32 = 0;
+        while (assets.next()) |asset| {
+            i += 1;
+            if (asset.len == 0) {
+                continue;
+            }
+
+            // Create asset struct
+            var asset_struct = Asset.init(allocator);
+
+            // append the url
+            try asset_struct.url.appendSlice(asset);
+
+            // get the least /
+            // Example asset:
+            //                                                                         | here
+            // https://github.com/John200410/rusherhack-spotify/releases/download/1.1.7/rusherhack-spotify-1.1.7.jar
+            const start = std.mem.lastIndexOf(u8, asset, "/");
+            if (start == null) {
+                continue;
+            }
+
+            // append the name
+            try asset_struct.name.appendSlice(asset[start.? + 1 ..]);
+
+            try stdout.print("ASSET {d} ({s}): {s}\n", .{ i, asset[start.? + 1 ..], asset });
+
+            try assets_list.append(asset_struct);
+        }
+        defer {
+            for (assets_list.items) |*asset| {
+                asset.*.deinit();
+            }
+        }
+
+        try stdout.print("Select the asset to download:\n-> ", .{});
+
+        const stdin = std.io.getStdIn().reader();
+        const inp = try stdin.readUntilDelimiterAlloc(allocator, '\n', 100);
+        defer allocator.free(inp);
+
+        if (inp.len == 0) {
+            log.err("No input provided", .{});
+            return;
+        }
+
+        const selection = try std.fmt.parseInt(u32, inp, 10);
+
+        std.debug.print("Asset number: {d}\n", .{selection});
+
+        if (selection >= assets_list.items.len or selection < 0) {
+            log.err("Invalid asset number provided", .{});
+            return;
+        }
+
+        const asset = assets_list.items[selection - 1];
+
+        log.debug("Downloading asset: {s}\n", .{asset.name.items});
+
+        try self.downloadAsset(allocator, asset);
+    }
+
+    fn downloadAsset(self: *DownloadSite, allocator: std.mem.Allocator, asset: Asset) !void {
+        // Initialize http client
+        log.debug("Downloading asset: {s}\n", .{asset.name.items});
+        log.debug("URL: {s}\n", .{asset.url.items});
+
+        // Get the http client
+        var client = std.http.Client{
+            .allocator = allocator,
+        };
+        defer client.deinit();
+
+        // Initialize response buffer
+        var response = std.ArrayList(u8).init(allocator);
+        defer response.deinit();
+
+        // Fetch options for a GET request
+        const fetch_options = std.http.Client.FetchOptions{
+            .location = .{ .url = asset.url.items },
+            .response_storage = .{ .dynamic = &response },
+            .method = .GET,
+        };
+        // The response code is saved
+        const result = try client.fetch(fetch_options);
+        log.debug("Status: {d}\n", .{result.status});
+
+        var path = std.ArrayList(u8).init(allocator);
+        defer path.deinit();
+        try path.appendSlice(self.config.?.mc_path.items);
+
+        if (self.config.?.subnames) {
+            // Add instances to the path
+            log.info("Enter the instance name: ", .{});
+
+            const stdin = std.io.getStdIn().reader();
+            const instance_name = try stdin.readUntilDelimiterAlloc(allocator, '\n', 100);
+            defer allocator.free(instance_name);
+
+            try path.appendSlice("/");
+            try path.appendSlice(instance_name);
+
+            if (self.config.?.cfg) {
+                var config_path = std.ArrayList(u8).init(allocator);
+                defer config_path.deinit();
+
+                try config_path.appendSlice(path.items);
+                try config_path.appendSlice("/instance.cfg");
+
+                log.info("Config path: {s}\n", .{config_path.items});
+
+                // Open the file
+                var file = try std.fs.openFileAbsolute(config_path.items, .{ .mode = .read_write });
+                defer file.close();
+
+                const contents = try file.readToEndAlloc(allocator, 10000);
+
+                if (std.mem.indexOf(u8, contents, "-Drusherhack.enablePlugins=true") != null) {
+                    log.info("Plugin support is already enabled\n", .{});
+                    return;
+                } else {
+                    log.info("Plugin support is not enabled\n", .{});
+                    const msg =
+                        \\WARNING: DO NOT ENABLE PLUGINS IF YOU DO NOT KNOW WHAT YOU ARE DOING.
+                        \\*Plugins are currently only able to be loaded in developer mode.
+                        \\IF YOU DONT KNOW WHAT YOU ARE DOING, DO NOT ENABLE PLUGINS.
+                        \\*Eventually in rusherhack v2.1 there will be an in-game plugin manager and repository for verified plugins.
+                        \\Would you like to enable plugins? (y/n): 
+                    ;
+                    const stdout = std.io.getStdOut().writer();
+                    try stdout.print("\u{001b}[31m{s}\n-> \u{001b}[m", .{msg});
+                    const answer = try stdin.readUntilDelimiterAlloc(allocator, '\n', 100);
+                    defer allocator.free(answer);
+
+                    if (answer.len == 0) {
+                        log.err("No input provided", .{});
+                        return;
+                    }
+
+                    if (answer[0] != 'y') {
+                        log.info("Plugin support not enabled\n", .{});
+                        return;
+                    }
+
+                    const start = std.mem.indexOf(u8, contents, "JvmArgs=");
+                    const end = std.mem.indexOf(u8, contents[start.?..], "\n");
+
+                    log.debug("Contents: {s}\n", .{contents[start.? .. end.? + start.?]});
+
+                    defer allocator.free(contents);
+                }
+            }
+            try path.appendSlice("/rusherhack/plugins/");
+        } else {
+            try path.appendSlice("/.minecraft/");
+        }
+
+        // TODO saving code
     }
 
     fn getDownloadLink(self: *DownloadSite, allocator: std.mem.Allocator, tag: []const u8) !void {
@@ -72,12 +260,29 @@ const DownloadSite = struct {
             .response_storage = .{ .dynamic = &response },
         };
 
-        log.info("Fetching: {s}\n", .{self.downloadUrl.items});
+        log.debug("Fetching: {s}\n", .{self.downloadUrl.items});
 
         // Fetch the releases page
         const result = try client.fetch(fetch_options);
 
         log.debug("Status: {d}\n", .{result.status});
+
+        // Split the response into lines
+        var lines = std.mem.splitAny(u8, response.items, "\n");
+
+        while (lines.next()) |line| {
+            if (std.mem.indexOf(u8, line, "href=\"") != null) {
+                const start = std.mem.indexOf(u8, line, "href=\"");
+                const end = std.mem.indexOf(u8, line, "\" rel=\"nofollow\"");
+                if (start == null or end == null) {
+                    continue;
+                }
+
+                try self.assets.appendSlice("https://github.com");
+                try self.assets.appendSlice(line[start.? + 6 .. end.?]);
+                try self.assets.appendSlice(" ");
+            }
+        }
     }
 
     fn getTag(self: *DownloadSite, allocator: std.mem.Allocator) !void {
@@ -136,6 +341,7 @@ const DownloadSite = struct {
                 }
 
                 self.url = url;
+                break;
             }
         }
     }
