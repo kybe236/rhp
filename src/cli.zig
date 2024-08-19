@@ -178,7 +178,7 @@ const Configure = struct {
 
                 switch (builtin.os.tag) {
                     .linux, .macos => {
-                        try env.appendSlice("/.local/share/multimc");
+                        try env.appendSlice("/.local/share/multimc/instances");
                     },
                     .windows => {
                         cli_loger.err("Use Custom path instead because theres no default: ", .{});
@@ -199,7 +199,7 @@ const Configure = struct {
 
                 switch (builtin.os.tag) {
                     .linux, .macos => {
-                        try env.appendSlice("/.local/share/PrismLauncher");
+                        try env.appendSlice("/.local/share/PrismLauncher/instances");
                     },
                     .windows => {
                         cli_loger.err("Use Custom path instead because theres no default: ", .{});
