@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const config = @import("config.zig");
 const plugin = @import("plugin.zig");
 const eql = std.mem.eql;
+// Message for unknown command
 const usage =
     \\ Unknown command
     \\ Usage: pluginname
@@ -11,26 +12,45 @@ const usage =
     \\  get <key>
     \\ 
 ;
+
+// Message for missing key or value
 const msg =
     \\Missing key or value
     \\Usage: --config set <key> <value>
     \\key are mc_path, subnames, cfg
 ;
 
+// Logger for cli
 const cli_loger = std.log.scoped(.cli);
 
 // The main function for the cli
 pub fn handle(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     // --config to configure rhp
     if (args.len > 1) {
+        // configuration
         if (eql(u8, args[1], "--config")) {
             if (args.len > 2) {
                 if (eql(u8, args[2], "set")) { // --config set <key> <value>
+                    // directly setting an option
+                    // Shortcuts:
+                    // - mc_path:
+                    // Linux:
+                    // - prismlauncher: ~/.local/share/PrismLauncher/instances
+                    // - multimc: ~/.local/share/multimc/instances
+                    // - official: ~/.minecraft
+                    // Windows:
+                    // - prismlauncher: %APPDATA%/PrismLauncher/instances
+                    // - official: %APPDATA%/.minecraft
                     var configure = Configure.init(allocator, args);
                     try configure.set();
                     configure.deinit();
                     return;
                 } else if (eql(u8, args[2], "get")) { // --config get <key>
+                    // getting an option
+                    // Options:
+                    // - mc_path
+                    // - subnames
+                    // - cfg
                     var configure = Configure.init(allocator, args);
                     try configure.get();
                     configure.deinit();
@@ -39,19 +59,23 @@ pub fn handle(allocator: std.mem.Allocator, args: [][:0]u8) !void {
                     std.debug.print(usage, .{});
                 }
             } else if (args.len == 2) {
+                // if only 2 arguments are passed use an interactive setup
                 var configure = Configure.init(allocator, args);
                 try configure.setup();
                 try configure.config.save(allocator);
                 configure.deinit();
             }
         } else {
+            // if it doesn't start with --config
             try plugin.init(allocator, args);
         }
     } else {
+        // if no arguments are passed
         std.debug.print(usage, .{});
     }
 }
 
+/// Enum for the different launchers
 const Launcher = enum {
     Official,
     MultiMC,
@@ -59,11 +83,14 @@ const Launcher = enum {
     CustomPath,
 };
 
+/// Wrapper for the configuration
 const Configure = struct {
     allocator: std.mem.Allocator,
     args: [][:0]u8,
     config: config.Config,
 
+    /// Initialize the configuration
+    /// Configure.deinit() must be called after done using
     pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) Configure {
         return Configure{
             .allocator = allocator,
@@ -72,10 +99,12 @@ const Configure = struct {
         };
     }
 
+    /// Deinitialize the configuration
     pub fn deinit(self: *Configure) void {
         self.config.deinit();
     }
 
+    /// Set a configuration option
     pub fn set(self: *Configure) !void {
         // --config set <key> <value>
         if (self.args.len < 5) {
@@ -91,6 +120,8 @@ const Configure = struct {
         try self.config.set(key, value, self.allocator);
         try self.config.save(self.allocator);
     }
+
+    /// Get a configuration option
     pub fn get(self: *Configure) !void {
         // --config get <key>
         if (self.args.len < 4) {
@@ -108,6 +139,7 @@ const Configure = struct {
         try stdout.print("{s}: {s}\n", .{ key, value });
     }
 
+    /// Interactive setup
     pub fn setup(self: *Configure) !void {
         // --config setup
         if (self.args.len > 3) {
@@ -136,6 +168,7 @@ const Configure = struct {
         try self.setLauncher(launcher);
     }
 
+    /// Get the launcher from the input
     fn getLauncher(input: []const u8) Launcher {
         if (eql(u8, input, "1")) {
             return Launcher.Official;
@@ -150,6 +183,7 @@ const Configure = struct {
         }
     }
 
+    /// Set the path for the launcher
     pub fn setLauncher(self: *Configure, launcher: Launcher) !void {
         switch (launcher) {
             Launcher.Official => {
