@@ -6,9 +6,10 @@ const log = std.log.scoped(.user_scraper);
 
 pub fn scraper(allocator: std.mem.Allocator, plugin: plugin_l.Plugin, config_a: config.Config) !void {
     var download = try DownloadSite.init(allocator, plugin);
+    defer download.deinit();
+
     download.config = config_a;
     try download.scrape(allocator);
-    defer download.deinit();
 }
 
 const Asset = struct {
@@ -181,6 +182,7 @@ const DownloadSite = struct {
             try path.appendSlice("/");
             try path.appendSlice(instance_name);
 
+            // Patching the config
             if (self.config.?.cfg) {
                 var config_path = std.ArrayList(u8).init(allocator);
                 defer config_path.deinit();
@@ -195,10 +197,10 @@ const DownloadSite = struct {
                 defer file.close();
 
                 const contents = try file.readToEndAlloc(allocator, 10000);
+                defer allocator.free(contents);
 
                 if (std.mem.indexOf(u8, contents, "-Drusherhack.enablePlugins=true") != null) {
                     log.info("Plugin support is already enabled\n", .{});
-                    return;
                 } else {
                     log.info("Plugin support is not enabled\n", .{});
                     const msg =
@@ -224,19 +226,81 @@ const DownloadSite = struct {
                     }
 
                     const start = std.mem.indexOf(u8, contents, "JvmArgs=");
-                    const end = std.mem.indexOf(u8, contents[start.?..], "\n");
+                    if (start == null) {
+                        try file.writeAll("-Drusherhack.enablePlugins=true");
+                    } else {
+                        const end = std.mem.indexOf(u8, contents[start.?..], "\n");
 
-                    log.debug("Contents: {s}\n", .{contents[start.? .. end.? + start.?]});
+                        if (start == null or end == null) {
+                            log.err("No JVM arguments found.\nIf you use official disable cfg in the config", .{});
+                            return;
+                        }
 
-                    defer allocator.free(contents);
+                        log.debug("Contents: {s}\n", .{contents[start.? .. end.? + start.?]});
+
+                        var jvm_line = std.ArrayList(u8).init(allocator);
+                        defer jvm_line.deinit();
+                        try jvm_line.appendSlice(contents[start.? .. end.? + start.?]);
+                        if (jvm_line.items.len == 0) {
+                            log.err("No JVM arguments found", .{});
+                            return;
+                        }
+                        if (std.mem.containsAtLeast(u8, jvm_line.items, 2, "\"")) {
+                            const start_index = std.mem.indexOf(u8, jvm_line.items, "\"");
+                            const end_index = std.mem.lastIndexOf(u8, jvm_line.items, "\"");
+                            if (start_index == null or end_index == null) {
+                                return;
+                            }
+                            if (end_index.? == start_index.? + 1) {
+                                log.info("No JVM arguments found adding plugin argument to end", .{});
+                                jvm_line.shrinkAndFree(jvm_line.items.len - 1);
+                                try jvm_line.appendSlice("-Drusherhack.enablePlugins=true\"");
+                            } else {
+                                log.info("Multiple JVM arguments found adding plugin argument to end", .{});
+                                jvm_line.shrinkAndFree(jvm_line.items.len - 1);
+                                try jvm_line.appendSlice(" -Drusherhack.enablePlugins=true\"");
+                            }
+                        } else {
+                            log.info("No JVM argument found adding plugin argument", .{});
+                            try jvm_line.appendSlice("\"-Drusherhack.enablePlugins=true\"");
+                        }
+
+                        var new_contents = std.ArrayList(u8).init(allocator);
+                        defer new_contents.deinit();
+
+                        try new_contents.appendSlice(contents[0..start.?]);
+                        try new_contents.appendSlice(jvm_line.items);
+                        try new_contents.appendSlice(contents[end.? + start.? ..]);
+
+                        log.debug("New contents: {s}\n", .{new_contents.items});
+
+                        try file.seekTo(0);
+                        try file.writeAll(new_contents.items);
+                    }
                 }
             }
-            try path.appendSlice("/rusherhack/plugins/");
-        } else {
             try path.appendSlice("/.minecraft/");
         }
 
-        // TODO saving code
+        try path.appendSlice("/rusherhack/plugins/");
+        // create folder "plugins" if it doesn't exist
+        std.fs.makeDirAbsolute(path.items) catch |err| {
+            if (err == std.fs.Dir.MakeError.PathAlreadyExists) {
+                log.info("Folder already exists\n", .{});
+            } else {
+                log.err("Failed to create folder: {s}\n", .{path.items});
+                return err;
+            }
+        };
+
+        var folder = try std.fs.openDirAbsolute(path.items, .{ .access_sub_paths = true });
+        defer folder.close();
+        log.info("Saving to: {s}{s}\n", .{ path.items, asset.name.items });
+        var out = try folder.createFile(asset.name.items, .{});
+        defer out.close();
+
+        try out.writeAll(response.items);
+        log.info("Downloaded asset: {s}\n", .{asset.name.items});
     }
 
     fn getDownloadLink(self: *DownloadSite, allocator: std.mem.Allocator, tag: []const u8) !void {

@@ -248,7 +248,7 @@ const Configure = struct {
                 self.config.mc_path = env;
             },
             Launcher.CustomPath => {
-                std.debug.print("Enter the path to the launcher:\n-> ", .{});
+                std.debug.print("Enter the path to the launcher (instances if its avaible else .minecraft):\n-> ", .{});
                 const input = try std.io.getStdIn().reader().readUntilDelimiterAlloc(self.allocator, '\n', 10000);
                 defer self.allocator.free(input);
                 if (input.len == 0) {
