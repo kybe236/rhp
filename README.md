@@ -23,7 +23,7 @@ move downloaded file to your bin
 ## Build rhp from source
 
 ```bash
-  zig build -Doptimize=ReleaseSafe
+  zig build -Doptimize=ReleaseFast
   mv zig-out/bin/rhp /usr/bin
 ```
 
