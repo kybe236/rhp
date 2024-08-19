@@ -14,6 +14,8 @@ This version is very early bugs can occur.
 
 be sure to open an github issue if you find any.
 
+pls use code kybe for rusherhack too support me
+
 # Installation
 
 ## Install rhp
