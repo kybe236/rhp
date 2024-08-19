@@ -364,7 +364,7 @@ pub fn GetAppdataPath(allocator: std.mem.Allocator) !std.ArrayList(u8) {
                     \\Appdata not found
                     \\Please check if %APPDATA% is defined as it should be
                 ;
-                config.err("{s}}\n", .{msg});
+                config.err("{s}\n", .{msg});
                 return ErrorSet.AppdataNotFound;
             }
             try path.appendSlice(appdata.?);

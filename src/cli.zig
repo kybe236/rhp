@@ -216,11 +216,11 @@ const Configure = struct {
                     },
                     .windows => {
                         cli_loger.err("Use Custom path instead because theres no default: ", .{});
-                        return null;
+                        return;
                     },
                     else => {
                         cli_loger.err("Unsupported OS\n", .{});
-                        return null;
+                        return;
                     },
                 }
 
@@ -237,11 +237,11 @@ const Configure = struct {
                     },
                     .windows => {
                         cli_loger.err("Use Custom path instead because theres no default: ", .{});
-                        return null;
+                        return;
                     },
                     else => {
                         cli_loger.err("Unsupported OS\n", .{});
-                        return null;
+                        return;
                     },
                 }
 
