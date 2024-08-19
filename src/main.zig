@@ -16,7 +16,7 @@ pub const main_log = std.log.scoped(.main);
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer if (gpa.deinit() == .leak) {
-        std.debug.print("{s}\n", .{leakmsg});
+        std.debug.print("leak", .{});
     };
     const allocator = gpa.allocator();
 
@@ -27,7 +27,13 @@ pub fn main() !void {
     defer env.deinit();
     const debug = env.get("DEBUG");
     if (debug != null) {
-        log_level = .debug;
+        if (std.mem.indexOf(u8, debug.?, "true") != null) {
+            log_level = .debug;
+        } else {
+            log_level = .info;
+        }
+    } else {
+        log_level = .info;
     }
 
     // Print arguments
@@ -47,22 +53,36 @@ pub const std_options = std.Options{
     .logFn = log,
 };
 
+// Custom log function
 pub fn log(
     comptime message_level: std.log.Level,
     comptime scope: @Type(.EnumLiteral),
     comptime format: []const u8,
     args: anytype,
 ) void {
-    const scope_txt = "(" ++ @tagName(scope) ++ ") ";
+    if (log_level != .debug and message_level == .debug) {
+        return;
+    }
+
+    const color = switch (message_level) {
+        .debug => "",
+        .info => "\u{001b}[32m",
+        .warn => "\u{001b}[93m",
+        .err => "\u{001b}[31m",
+    };
+
+    const reset = "\u{001b}[m";
+
+    const scope_txt = "(" ++ color ++ @tagName(scope) ++ reset ++ ") ";
     const stderr = std.io.getStdErr().writer();
     var bw = std.io.bufferedWriter(stderr);
     const writer = bw.writer();
 
     const lvl_txt = switch (message_level) {
         .debug => "[DEBUG] ",
-        .info => "[+] ",
-        .warn => "[-] ",
-        .err => "[ERROR] ",
+        .info => "[\u{001b}[32m+\u{001b}[m] ",
+        .warn => "[\u{001b}[93m-\u{001b}[m] ",
+        .err => "[\u{001b}[31mERROR\u{001b}[m] ",
     };
 
     std.debug.lockStdErr();
