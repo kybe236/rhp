@@ -10,9 +10,7 @@ feel free to make pr if you wanna add something
 
 ## Disclaimer
 
-This version is very early bugs can occur.
-
-be sure to open an github issue if you find any.
+be sure to open an github issue if you find any bugs.
 
 pls use code kybe for rusherhack too support me
 
