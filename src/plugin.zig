@@ -86,7 +86,7 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
             try stdout.print("Creator link: {s}\n", .{plugin.creatorLink.items});
             try stdout.print("URL: {s}\n", .{plugin.url.items});
 
-            try user_sraper.scraper(allocator, plugin);
+            try user_sraper.scraper(allocator, plugin, configure);
 
             return;
         }
@@ -157,7 +157,7 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     try stdout.print("Creator link: {s}\n", .{ranks.items[0].plugin.creatorLink.items});
     try stdout.print("URL: {s}\n", .{ranks.items[0].plugin.url.items});
 
-    try user_sraper.scraper(allocator, ranks.items[0].plugin);
+    try user_sraper.scraper(allocator, ranks.items[0].plugin, configure);
 }
 
 const PluginRank = struct {
@@ -316,8 +316,6 @@ const Scraper = struct {
             .location = .{ .url = site },
             .response_storage = .{ .dynamic = &response },
         });
-
-        plugin_log.debug("Response status: {d}\n", .{result.status});
 
         if (result.status != std.http.Status.ok) {
             plugin_log.err("failed to fetch plugins\n", .{});
