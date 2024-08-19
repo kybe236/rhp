@@ -14,15 +14,56 @@ This version is very early bugs can occur.
 
 be sure to open an github issue if you find any.
 
-## Installation
+# Installation
 
-### Install rhp
+## Install rhp
 
 move downloaded file to your bin
 
-### Build rhp from source
+## Build rhp from source
 
 ```bash
   zig build -Doptimize=ReleaseSafe
   mv zig-out/bin/rhp /usr/bin
+```
+
+# Usage
+
+## Settings
+
+### configuration wizard
+```bash
+rhp --config
+```
+
+### seting an specifig seting
+
+### keys
+
+- mc_path:  string
+- cfg:  bool
+- subnames: bool
+
+```bash
+rhp --config set <key> <value>
+```
+
+### Geting an setting
+
+```bash
+rhp --config get <key>
+```
+
+## Installing
+
+to install an plugin
+
+```bash
+rhp <name>
+```
+
+to search with multiple words
+
+```bash
+rhp "<word> <word>"
 ```
