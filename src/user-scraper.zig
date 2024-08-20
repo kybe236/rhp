@@ -196,126 +196,7 @@ const DownloadSite = struct {
                 var file = try std.fs.openFileAbsolute(config_path.items, .{ .mode = .read_write });
                 defer file.close();
 
-                const contents = try file.readToEndAlloc(allocator, 10000);
-                defer allocator.free(contents);
-
-                if (std.mem.indexOf(u8, contents, "-Drusherhack.enablePlugins=true") != null) {
-                    log.info("Plugin support is already enabled\n", .{});
-                } else {
-                    log.info("Plugin support is not enabled\n", .{});
-                    const msg =
-                        \\WARNING: DO NOT ENABLE PLUGINS IF YOU DO NOT KNOW WHAT YOU ARE DOING.
-                        \\*Plugins are currently only able to be loaded in developer mode.
-                        \\IF YOU DONT KNOW WHAT YOU ARE DOING, DO NOT ENABLE PLUGINS.
-                        \\*Eventually in rusherhack v2.1 there will be an in-game plugin manager and repository for verified plugins.
-                        \\ !!! CLOSE THE LAUNCHER IF YOU WANT TO ENABLE PLUGINS !!!
-                        \\Would you like to enable plugins? (y/n): 
-                    ;
-                    const stdout = std.io.getStdOut().writer();
-                    try stdout.print("\u{001b}[31m{s}\n-> \u{001b}[m", .{msg});
-                    const answer = try stdin.readUntilDelimiterAlloc(allocator, '\n', 100);
-                    defer allocator.free(answer);
-
-                    if (answer.len == 0) {
-                        log.err("No input provided", .{});
-                        return;
-                    }
-
-                    if (answer[0] != 'y') {
-                        log.info("Plugin support not enabled\n", .{});
-                        return;
-                    }
-
-                    var new_contents = std.ArrayList(u8).init(allocator);
-                    defer new_contents.deinit();
-                    var jvm_line = std.ArrayList(u8).init(allocator);
-                    defer jvm_line.deinit();
-
-                    const start = std.mem.indexOf(u8, contents, "JvmArgs=");
-                    if (start == null) {
-                        try new_contents.appendSlice(contents);
-                        try new_contents.appendSlice("JvmArgs=-Drusherhack.enablePlugins=true");
-                    } else {
-                        const end = std.mem.indexOf(u8, contents[start.?..], "\n");
-
-                        if (start == null or end == null) {
-                            log.err("No JVM arguments found.\nIf you use official disable cfg in the config", .{});
-                            return;
-                        }
-
-                        log.debug("Contents: {s}\n", .{contents[start.? .. end.? + start.?]});
-
-                        try jvm_line.appendSlice(contents[start.? .. end.? + start.?]);
-                        if (jvm_line.items.len == 0) {
-                            log.err("No JVM arguments found", .{});
-                            return;
-                        }
-                        if (std.mem.containsAtLeast(u8, jvm_line.items, 2, "\n")) {
-                            const start_index = std.mem.indexOf(u8, jvm_line.items, "\n");
-                            const end_index = std.mem.lastIndexOf(u8, jvm_line.items, "\n");
-                            if (start_index == null or end_index == null) {
-                                return;
-                            }
-                            if (end_index.? == start_index.? + 1) {
-                                log.info("No JVM arguments found adding plugin argument to end", .{});
-                                jvm_line.shrinkAndFree(jvm_line.items.len - 1);
-                                try jvm_line.appendSlice("-Drusherhack.enablePlugins=true\n");
-                            } else {
-                                log.info("Multiple JVM arguments found adding plugin argument to end", .{});
-                                jvm_line.shrinkAndFree(jvm_line.items.len - 1);
-                                try jvm_line.appendSlice(" -Drusherhack.enablePlugins=true\n");
-                            }
-                        } else {
-                            log.info("No JVM argument found adding plugin argument", .{});
-                            try jvm_line.appendSlice("\"-Drusherhack.enablePlugins=true\n");
-                        }
-
-                        try new_contents.appendSlice(contents[0..start.?]);
-                        try new_contents.appendSlice(jvm_line.items);
-                        try new_contents.appendSlice(contents[end.? + start.? ..]);
-                    }
-
-                    var final_contents = std.ArrayList(u8).init(allocator);
-                    defer final_contents.deinit();
-
-                    const overide_start = std.mem.indexOf(u8, new_contents.items, "OverrideJavaArgs=");
-                    if (overide_start == null) {
-                        try final_contents.appendSlice(new_contents.items);
-                        try final_contents.appendSlice("\nOverrideJavaArgs=true");
-                    } else {
-                        const overide_end = std.mem.indexOf(u8, new_contents.items[overide_start.?..], "\n");
-                        if (overide_end == null) {
-                            log.err("No OverrideJavaArgs found", .{});
-                            return;
-                        }
-
-                        try final_contents.appendSlice(new_contents.items[0..overide_start.?]);
-                        try final_contents.appendSlice("OverrideJavaArgs=true");
-                        try final_contents.appendSlice(new_contents.items[overide_end.? + overide_start.? ..]);
-                    }
-
-                    // sort the lines
-                    var lines = std.mem.splitAny(u8, final_contents.items, "\n");
-                    var lines_list = std.ArrayList([]const u8).init(allocator);
-                    defer lines_list.deinit();
-
-                    while (lines.next()) |line| {
-                        if (line.len == 0) {
-                            continue;
-                        }
-                        try lines_list.append(line);
-                    }
-
-                    std.sort.insertion([]const u8, lines_list.items, {}, compareStrings);
-
-                    log.debug("New contents: {s}\n", .{lines_list.items});
-
-                    try file.seekTo(0);
-                    for (lines_list.items) |line| {
-                        _ = try file.write(line);
-                        _ = try file.write("\n");
-                    }
-                }
+                try patchcfg(allocator, file);
             }
             try path.appendSlice("/.minecraft/");
         }
@@ -332,7 +213,6 @@ const DownloadSite = struct {
             try path.appendSlice("/plugins/");
         }
 
-    
         // create folder "plugins" if it doesn't exist
         std.fs.makeDirAbsolute(path.items) catch |err| {
             if (err == std.fs.Dir.MakeError.PathAlreadyExists) {
@@ -460,6 +340,131 @@ const DownloadSite = struct {
         }
     }
 };
+
+pub fn patchcfg(allocator: std.mem.Allocator, file: std.fs.File) !void {
+    const contents = try file.readToEndAlloc(allocator, 10000);
+    defer allocator.free(contents);
+
+    const stdin = std.io.getStdIn().reader();
+
+    if (std.mem.indexOf(u8, contents, "-Drusherhack.enablePlugins=true") != null) {
+        log.info("Plugin support is already enabled\n", .{});
+    } else {
+        log.info("Plugin support is not enabled\n", .{});
+        const msg =
+            \\WARNING: DO NOT ENABLE PLUGINS IF YOU DO NOT KNOW WHAT YOU ARE DOING.
+            \\*Plugins are currently only able to be loaded in developer mode.
+            \\IF YOU DONT KNOW WHAT YOU ARE DOING, DO NOT ENABLE PLUGINS.
+            \\*Eventually in rusherhack v2.1 there will be an in-game plugin manager and repository for verified plugins.
+            \\ !!! CLOSE THE LAUNCHER IF YOU WANT TO ENABLE PLUGINS !!!
+            \\Would you like to enable plugins? (y/n): 
+        ;
+        const stdout = std.io.getStdOut().writer();
+        try stdout.print("\u{001b}[31m{s}\n-> \u{001b}[m", .{msg});
+        const answer = try stdin.readUntilDelimiterAlloc(allocator, '\n', 100);
+        defer allocator.free(answer);
+
+        if (answer.len == 0) {
+            log.err("No input provided", .{});
+            return;
+        }
+
+        if (answer[0] != 'y') {
+            log.info("Plugin support not enabled\n", .{});
+            return;
+        }
+
+        var new_contents = std.ArrayList(u8).init(allocator);
+        defer new_contents.deinit();
+        var jvm_line = std.ArrayList(u8).init(allocator);
+        defer jvm_line.deinit();
+
+        const start = std.mem.indexOf(u8, contents, "JvmArgs=");
+        if (start == null) {
+            try new_contents.appendSlice(contents);
+            try new_contents.appendSlice("JvmArgs=-Drusherhack.enablePlugins=true");
+        } else {
+            const end = std.mem.indexOf(u8, contents[start.?..], "\n");
+
+            if (start == null or end == null) {
+                log.err("No JVM arguments found.\nIf you use official disable cfg in the config", .{});
+                return;
+            }
+
+            log.debug("Contents: {s}\n", .{contents[start.? .. end.? + start.?]});
+
+            try jvm_line.appendSlice(contents[start.? .. end.? + start.?]);
+            if (jvm_line.items.len == 0) {
+                log.err("No JVM arguments found", .{});
+                return;
+            }
+            if (std.mem.containsAtLeast(u8, jvm_line.items, 2, "\n")) {
+                const start_index = std.mem.indexOf(u8, jvm_line.items, "\n");
+                const end_index = std.mem.lastIndexOf(u8, jvm_line.items, "\n");
+                if (start_index == null or end_index == null) {
+                    return;
+                }
+                if (end_index.? == start_index.? + 1) {
+                    log.info("No JVM arguments found adding plugin argument to end", .{});
+                    jvm_line.shrinkAndFree(jvm_line.items.len - 1);
+                    try jvm_line.appendSlice("-Drusherhack.enablePlugins=true\n");
+                } else {
+                    log.info("Multiple JVM arguments found adding plugin argument to end", .{});
+                    jvm_line.shrinkAndFree(jvm_line.items.len - 1);
+                    try jvm_line.appendSlice(" -Drusherhack.enablePlugins=true\n");
+                }
+            } else {
+                log.info("No JVM argument found adding plugin argument", .{});
+                try jvm_line.appendSlice("\"-Drusherhack.enablePlugins=true\n");
+            }
+
+            try new_contents.appendSlice(contents[0..start.?]);
+            try new_contents.appendSlice(jvm_line.items);
+            try new_contents.appendSlice(contents[end.? + start.? ..]);
+        }
+
+        var final_contents = std.ArrayList(u8).init(allocator);
+        defer final_contents.deinit();
+
+        const overide_start = std.mem.indexOf(u8, new_contents.items, "OverrideJavaArgs=");
+        if (overide_start == null) {
+            try final_contents.appendSlice(new_contents.items);
+            try final_contents.appendSlice("\nOverrideJavaArgs=true");
+        } else {
+            const overide_end = std.mem.indexOf(u8, new_contents.items[overide_start.?..], "\n");
+            if (overide_end == null) {
+                log.err("No OverrideJavaArgs found", .{});
+                return;
+            }
+
+            try final_contents.appendSlice(new_contents.items[0..overide_start.?]);
+            try final_contents.appendSlice("OverrideJavaArgs=true");
+            try final_contents.appendSlice(new_contents.items[overide_end.? + overide_start.? ..]);
+        }
+
+        // sort the lines
+        var lines = std.mem.splitAny(u8, final_contents.items, "\n");
+        var lines_list = std.ArrayList([]const u8).init(allocator);
+        defer lines_list.deinit();
+
+        while (lines.next()) |line| {
+            if (line.len == 0) {
+                continue;
+            }
+            try lines_list.append(line);
+        }
+
+        std.sort.insertion([]const u8, lines_list.items, {}, compareStrings);
+
+        log.debug("New contents: {s}\n", .{lines_list.items});
+
+        try file.seekTo(0);
+        for (lines_list.items) |line| {
+            _ = try file.write(line);
+            _ = try file.write("\n");
+        }
+    }
+}
 
 fn compareStrings(_: void, lhs: []const u8, rhs: []const u8) bool {
     return std.mem.order(u8, lhs, rhs).compare(std.math.CompareOperator.lt);

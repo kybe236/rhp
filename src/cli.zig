@@ -2,21 +2,33 @@ const std = @import("std");
 const builtin = @import("builtin");
 const config = @import("config.zig");
 const plugin = @import("plugin.zig");
+const user_scraper = @import("user-scraper.zig");
 const eql = std.mem.eql;
 // Message for unknown command
 const usage =
     \\ Unknown command
-    \\ Usage: pluginname
-    \\ Usage: --config <set|get>
+    \\ Usage:
+    \\ rhp pluginname
+    \\
+    \\ rhp --config <set|get> 
     \\  set <key> <value>
     \\  get <key>
+    \\
+    \\ rhp --watch <path>   // watches for changes to an file an clones it
+    \\
+    \\ rhp --link <path>    // links the plugin
+    \\
+    \\ rhp --unlink <path>  // unlinks the plugin
+    \\
+    \\ rhp --patch <path>   // patches an cfg file
     \\ 
 ;
 
 // Message for missing key or value
 const msg =
     \\Missing key or value
-    \\Usage: --config set <key> <value>
+    \\Usage:
+    \\  --config set <key> <value>
     \\key are mc_path, subnames, cfg
 ;
 
@@ -121,6 +133,59 @@ pub fn handle(allocator: std.mem.Allocator, args: [][:0]u8) !void {
                 return err;
             };
             cli_loger.info("symlinked: {s} to {s}", .{ absolut_file, global_path.items });
+        } else if (eql(u8, args[1], "--unlink")) {
+            // --unlink
+            // unlink the plugin from the global folder
+            if (args.len < 3) {
+                cli_loger.err("Missing path\n", .{});
+                return;
+            }
+            const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+            defer allocator.free(cwd_path);
+
+            cli_loger.debug("cwd_path: {s}\n", .{cwd_path});
+
+            const absolut_file = try std.fs.path.resolve(allocator, &.{
+                cwd_path, args[2],
+            });
+            defer allocator.free(absolut_file);
+
+            cli_loger.info("Unlinking {s}\n", .{absolut_file});
+
+            std.fs.deleteFileAbsolute(absolut_file) catch |err| {
+                if (err == std.posix.DeleteDirError.FileNotFound) {
+                    // ignore
+                } else {
+                    return err;
+                }
+            };
+            std.fs.makeDirAbsolute(absolut_file) catch |err| {
+                return err;
+            };
+            cli_loger.info("unlinked: {s}", .{absolut_file});
+        } else if (eql(u8, args[1], "--patch")) {
+            // --patch
+            // patches an cfg file
+            if (args.len < 3) {
+                cli_loger.err("Missing path\n", .{});
+                return;
+            }
+            const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+            defer allocator.free(cwd_path);
+
+            cli_loger.debug("cwd_path: {s}\n", .{cwd_path});
+
+            const absolut_file = try std.fs.path.resolve(allocator, &.{
+                cwd_path, args[2],
+            });
+            defer allocator.free(absolut_file);
+
+            cli_loger.info("Patching {s}\n", .{absolut_file});
+
+            var file = try std.fs.cwd().openFile(absolut_file, .{ .mode = .read_write });
+            defer file.close();
+
+            try user_scraper.patchcfg(allocator, file);
         } else {
             // if it doesn't start with --config
             try plugin.init(allocator, args);

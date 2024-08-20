@@ -86,14 +86,26 @@ to search with multiple words
 rhp "<word> <word>"
 ```
 
-## Special install if using global option
+## Patching cfg
 
-global saves all plugins in $HOME/.rhp/global or %APPDATA%/.rhp/global
+```bash
+rhp --patch <file>
+```
+
+## Special install if using global storage
+
+global saves all plugins in $XDG_STATE_HOME/.rhp/global and $HOME/.local/state/.rhp/global as fallback or %APPDATA%/.rhp/global on windowss
 
 add mc rusherhack folders to use the global folder via
 
 ```bash
 rhp --link <path to plugins folder>
+```
+
+and to remove an link (deletes and makes a folder)
+
+```bash
+rhp --unlink <path to plugins folder>
 ```
 
 # Usage developer
