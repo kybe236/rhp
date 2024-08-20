@@ -254,8 +254,7 @@ pub const Config = struct {
                         config.info("set mc_path to {s}\n", .{env.items});
                     },
                     else => {
-                        config.err("OS not supported\n", .{});
-                        return;
+                        @compileError("OS not supported");
                     },
                 }
             } else if (eql(u8, lower_value.items, "multimc")) {
@@ -270,8 +269,7 @@ pub const Config = struct {
                         config.err("MultiMC has no default path on Windows\n", .{});
                     },
                     else => {
-                        config.err("OS not supported\n", .{});
-                        return;
+                        @compileError("OS not supported");
                     },
                 }
             } else if (eql(u8, lower_value.items, "official")) {
@@ -288,11 +286,27 @@ pub const Config = struct {
                         config.info("set mc_path to {s}\n", .{env.items});
                     },
                     else => {
-                        config.err("OS not supported\n", .{});
-                        return;
+                        @compileError("OS not supported");
                     },
                 }
-            } else {
+            } else if (eql(u8, lower_value.items, "official")) {
+                var env = try GetAppdataPath(allocator);
+                switch (builtin.os.tag) {
+                    .linux, .macos => {
+                        try env.appendSlice("/.minecraft");
+                        self.mc_path = env;
+                        config.info("set mc_path to {s}\n", .{env.items});
+                    },
+                    .windows => {
+                        try env.appendSlice("/.minecraft");
+                        self.mc_path = env;
+                        config.info("set mc_path to {s}\n", .{env.items});
+                    },
+                    else => {
+                        @compileError("OS not supported");
+                    },
+                }
+            }else {
                 try self.mc_path.resize(0);
                 try self.mc_path.appendSlice(value);
                 config.info("set mc_path to {s}\n", .{value});
