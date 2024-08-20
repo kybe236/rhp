@@ -10,7 +10,7 @@ const leakmsg =
     \\ Thank you for your cooperation
 ;
 
-pub var log_level: std.log.Level = .info;
+pub var debug = false;
 pub const main_log = std.log.scoped(.main);
 
 pub fn main() !void {
@@ -25,15 +25,11 @@ pub fn main() !void {
 
     var env = try std.process.getEnvMap(allocator);
     defer env.deinit();
-    const debug = env.get("DEBUG");
-    if (debug != null) {
-        if (std.mem.indexOf(u8, debug.?, "true") != null) {
-            log_level = .debug;
-        } else {
-            log_level = .info;
+    const debug_env = env.get("DEBUG");
+    if (debug_env != null) {
+        if (std.mem.indexOf(u8, debug_env.?, "true") != null) {
+            debug = true;
         }
-    } else {
-        log_level = .info;
     }
 
     // Print arguments
@@ -51,6 +47,7 @@ pub fn main() !void {
 
 pub const std_options = std.Options{
     .logFn = log,
+    .log_level = .debug,
 };
 
 // Custom log function
@@ -60,7 +57,7 @@ pub fn log(
     comptime format: []const u8,
     args: anytype,
 ) void {
-    if (log_level != .debug and message_level == .debug) {
+    if (!debug and message_level == .debug) {
         return;
     }
 
