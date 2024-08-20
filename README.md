@@ -34,7 +34,7 @@ yay rhp-git
 git clone https://aur.archlinux.org/rhp-git.git && cd rhp-git && makepkg -si
 ```
 
-## every platform
+## Every platform
 
 move downloaded file to your bin
 
