@@ -319,17 +319,18 @@ const DownloadSite = struct {
             }
             try path.appendSlice("/.minecraft/");
         }
-
-        try path.appendSlice("rusherhack");
-        std.fs.makeDirAbsolute(path.items) catch |err| {
-            if (err == std.fs.Dir.MakeError.PathAlreadyExists) {
-                log.info("Folder already exists\n", .{});
-            } else {
-                log.err("Failed to create folder: {s}\n", .{path.items});
-                return err;
-            }
-        };
-        try path.appendSlice("/plugins/");
+        if (std.mem.indexOf(u8, path.items, ".rhp/global") == null) {
+            try path.appendSlice("rusherhack");
+            std.fs.makeDirAbsolute(path.items) catch |err| {
+                if (err == std.fs.Dir.MakeError.PathAlreadyExists) {
+                    log.info("Folder already exists\n", .{});
+                } else {
+                    log.err("Failed to create folder: {s}\n", .{path.items});
+                    return err;
+                }
+            };
+            try path.appendSlice("/plugins/");
+        }
         // create folder "plugins" if it doesn't exist
         std.fs.makeDirAbsolute(path.items) catch |err| {
             if (err == std.fs.Dir.MakeError.PathAlreadyExists) {

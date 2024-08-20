@@ -86,6 +86,16 @@ to search with multiple words
 rhp "<word> <word>"
 ```
 
+## Special install if using global option
+
+global saves all plugins in $HOME/.rhp/global or %APPDATA%/.rhp/global
+
+add mc rusherhack folders to use the global folder via
+
+```bash
+rhp --link <path to plugins folder>
+```
+
 # Usage developer
 
 ### Listen for file changes and change the mod in the mc folder
@@ -115,5 +125,4 @@ from there it gets the tag url via the header
 2.  https://github.com/user/repo/releases/expanded_assets/tag-id
 
 fom there it gets all releases and asks the user wich to download and then downloads it
-
 

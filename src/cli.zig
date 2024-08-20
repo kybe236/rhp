@@ -88,6 +88,39 @@ pub fn handle(allocator: std.mem.Allocator, args: [][:0]u8) !void {
             var watcher = try Watcher.init(allocator, absolut_file);
             defer watcher.deinit();
             try watcher.watch();
+        } else if (eql(u8, args[1], "--link")) {
+            // --link
+            // link the plugin to the global folder
+            if (args.len < 3) {
+                cli_loger.err("Missing path\n", .{});
+                return;
+            }
+            const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+            defer allocator.free(cwd_path);
+
+            cli_loger.debug("cwd_path: {s}\n", .{cwd_path});
+
+            const absolut_file = try std.fs.path.resolve(allocator, &.{
+                cwd_path, args[2],
+            });
+            defer allocator.free(absolut_file);
+
+            cli_loger.info("Linking {s}\n", .{absolut_file});
+
+            var global_path = try config.GetAppdataPath(allocator);
+            defer global_path.deinit();
+            try global_path.appendSlice("/.rhp/global");
+            std.fs.deleteDirAbsolute(absolut_file) catch |err| {
+                if (err == std.posix.DeleteDirError.FileNotFound) {
+                    // ignore
+                } else {
+                    return err;
+                }
+            };
+            std.fs.symLinkAbsolute(global_path.items, absolut_file, .{ .is_directory = true }) catch |err| {
+                return err;
+            };
+            cli_loger.info("symlinked: {s} to {s}", .{ absolut_file, global_path.items });
         } else {
             // if it doesn't start with --config
             try plugin.init(allocator, args);
@@ -189,6 +222,7 @@ const Launcher = enum {
     Official,
     MultiMC,
     PrismLauncher,
+    Global,
     CustomPath,
 };
 
@@ -261,6 +295,7 @@ const Configure = struct {
             \\1. Official
             \\2. MultiMC (For windows use custom path)
             \\3. PrismLauncher
+            \\4. Global Path use --link rusherhack folder to link it (contents will be deleted) (saved at .rhp/global)
             \\4. Custom Path
             \\Enter the number of the launcher:
             \\-> 
@@ -286,8 +321,11 @@ const Configure = struct {
         } else if (eql(u8, input, "3")) {
             return Launcher.PrismLauncher;
         } else if (eql(u8, input, "4")) {
+            return Launcher.Global;
+        } else if (eql(u8, input, "5")) {
             return Launcher.CustomPath;
         } else {
+            cli_loger.err("Invalid input defaulting to Official\n", .{});
             return Launcher.Official;
         }
     }
@@ -353,6 +391,14 @@ const Configure = struct {
                         return;
                     },
                 }
+
+                self.config.mc_path = env;
+            },
+            Launcher.Global => {
+                var env = try config.GetAppdataPath(self.allocator);
+                try env.appendSlice("/.rhp/global");
+                self.config.cfg = false;
+                self.config.subnames = false;
 
                 self.config.mc_path = env;
             },

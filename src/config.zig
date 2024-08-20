@@ -289,16 +289,11 @@ pub const Config = struct {
                         @compileError("OS not supported");
                     },
                 }
-            } else if (eql(u8, lower_value.items, "official")) {
+            } else if (eql(u8, lower_value.items, "global")) {
                 var env = try GetAppdataPath(allocator);
                 switch (builtin.os.tag) {
-                    .linux, .macos => {
-                        try env.appendSlice("/.minecraft");
-                        self.mc_path = env;
-                        config.info("set mc_path to {s}\n", .{env.items});
-                    },
-                    .windows => {
-                        try env.appendSlice("/.minecraft");
+                    .linux, .macos, .windows => {
+                        try env.appendSlice("/.rhp/global");
                         self.mc_path = env;
                         config.info("set mc_path to {s}\n", .{env.items});
                     },
@@ -306,7 +301,7 @@ pub const Config = struct {
                         @compileError("OS not supported");
                     },
                 }
-            }else {
+            } else {
                 try self.mc_path.resize(0);
                 try self.mc_path.appendSlice(value);
                 config.info("set mc_path to {s}\n", .{value});
