@@ -18,6 +18,26 @@ pls use code kybe for rusherhack too support me
 
 ## Install rhp
 
+## Arch
+
+#### With an AUR manager
+
+```bash
+paru -S rhp-git
+```
+
+```bash
+yay rhp-git
+```
+
+#### Without an packet manager
+
+```bash
+git clone https://aur.archlinux.org/rhp-git.git && cd rhp-git && makepkg -si
+```
+
+## every platform
+
 move downloaded file to your bin
 
 ## Build rhp from source
