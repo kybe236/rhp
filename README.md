@@ -16,8 +16,6 @@ pls use code kybe for rusherhack too support me
 
 # Installation
 
-## Install rhp
-
 ## Arch
 
 #### With an AUR manager
