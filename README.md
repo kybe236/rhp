@@ -85,3 +85,27 @@ to search with multiple words
 ```bash
 rhp "<word> <word>"
 ```
+
+## How it works
+
+It gets the contents of the [plugin list](https://github.com/RusherDevelopment/rusherhack-plugins) from [@Garlic](https://github.com/GarlicRot)
+
+After that it first of splits anything betwen \<!-- START PLUGINS LIST --> and \<!-- END PLUGINS LIST -->
+
+Then it splits by \---
+
+The name and url for the downloads originate from the header (the on starting with \### [)
+
+The description is based on whats left after ignoring every tag for images and vidios so if theres none of these and it isn't empty its the tag
+
+Then it does some github site lookups.
+
+1. https://github.com/user/repo/releases
+
+from there it gets the tag url via the header 
+
+2.  https://github.com/user/repo/releases/expanded_assets/tag-id
+
+fom there it gets all releases and asks the user wich to download and then downloads it
+
+
