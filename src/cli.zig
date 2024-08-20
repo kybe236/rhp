@@ -65,6 +65,29 @@ pub fn handle(allocator: std.mem.Allocator, args: [][:0]u8) !void {
                 try configure.config.save(allocator);
                 configure.deinit();
             }
+        } else if (eql(u8, args[1], "--watch")) {
+            // --watch
+            // watch for changes to an jar file
+            // and reload the plugin
+            if (args.len < 3) {
+                cli_loger.err("Missing path\n", .{});
+                return;
+            }
+            const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+            defer allocator.free(cwd_path);
+
+            cli_loger.debug("cwd_path: {s}\n", .{cwd_path});
+
+            const absolut_file = try std.fs.path.resolve(allocator, &.{
+                cwd_path, args[2],
+            });
+            defer allocator.free(absolut_file);
+
+            cli_loger.info("Watching {s}\n", .{absolut_file});
+
+            var watcher = try Watcher.init(allocator, absolut_file);
+            defer watcher.deinit();
+            try watcher.watch();
         } else {
             // if it doesn't start with --config
             try plugin.init(allocator, args);
@@ -74,6 +97,92 @@ pub fn handle(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         std.debug.print(usage, .{});
     }
 }
+
+const Watcher = struct {
+    allocator: std.mem.Allocator,
+    path: []const u8,
+    file: std.fs.File,
+    config: config.Config,
+
+    pub fn init(allocator: std.mem.Allocator, path: []const u8) !Watcher {
+        var config_struct = config.Config.init(allocator);
+        try config_struct.load(allocator);
+        return Watcher{
+            .allocator = allocator,
+            .path = path,
+            .file = try std.fs.cwd().openFile(path, .{ .mode = .read_write }),
+            .config = config_struct,
+        };
+    }
+
+    pub fn deinit(self: *Watcher) void {
+        self.file.close();
+    }
+
+    pub fn watch(self: *Watcher) !void {
+        var path = self.config.mc_path;
+        if (self.config.subnames) {
+            const stdin = std.io.getStdOut().reader();
+            const stdout = std.io.getStdOut().writer();
+
+            try stdout.print("Enter the name of the instance\n-> ", .{});
+            const instance = try stdin.readUntilDelimiterAlloc(self.allocator, '\n', 1000);
+            defer self.allocator.free(instance);
+
+            try path.appendSlice("/");
+            try path.appendSlice(instance);
+            try path.appendSlice("/.minecraft");
+        }
+        try path.appendSlice("/rusherhack");
+        std.fs.makeDirAbsolute(path.items) catch |err| {
+            if (err == std.fs.Dir.MakeError.PathAlreadyExists) {
+                // ignore
+            } else {
+                return err;
+            }
+        };
+        try path.appendSlice("/plugins");
+        std.fs.makeDirAbsolute(path.items) catch |err| {
+            if (err == std.fs.Dir.MakeError.PathAlreadyExists) {
+                // ignore
+            } else {
+                return err;
+            }
+        };
+        try path.appendSlice("/");
+        const start = std.mem.lastIndexOf(u8, self.path, "/");
+        if (start == null) {
+            cli_loger.err("Invalid path\n", .{});
+            return;
+        }
+        try path.appendSlice(self.path[start.?..]);
+        const file = try std.fs.cwd().createFile(path.items, .{});
+        defer file.close();
+        {
+            const content = try self.file.readToEndAlloc(self.allocator, 10000000);
+            defer self.allocator.free(content);
+            try file.seekTo(0);
+            try file.writeAll(content);
+        }
+        var time: i128 = 0;
+        const stat = try self.file.stat();
+        time = stat.mtime;
+        while (true) {
+            std.time.sleep(std.time.ms_per_s);
+            const new_stat = try self.file.stat();
+            if (new_stat.mtime > time) {
+                try self.file.seekTo(0);
+                const content = try self.file.readToEndAlloc(self.allocator, 10000000);
+                defer self.allocator.free(content);
+                try file.setEndPos(0);
+                try file.seekTo(0);
+                try file.writeAll(content);
+                time = new_stat.mtime;
+                cli_loger.info("Reloading plugin\n", .{});
+            }
+        }
+    }
+};
 
 /// Enum for the different launchers
 const Launcher = enum {

@@ -86,6 +86,14 @@ to search with multiple words
 rhp "<word> <word>"
 ```
 
+# Usage developer
+
+### Listen for file changes and change the mod in the mc folder
+
+```bash
+rhp --watch file
+```
+
 ## How it works
 
 It gets the contents of the [plugin list](https://github.com/RusherDevelopment/rusherhack-plugins) from [@Garlic](https://github.com/GarlicRot)
