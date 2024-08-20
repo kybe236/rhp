@@ -107,7 +107,7 @@ pub fn handle(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 
             cli_loger.info("Linking {s}\n", .{absolut_file});
 
-            var global_path = try config.GetAppdataPath(allocator);
+            var global_path = try config.getConfigFolder(allocator);
             defer global_path.deinit();
             try global_path.appendSlice("/.rhp/global");
             std.fs.deleteDirAbsolute(absolut_file) catch |err| {
@@ -296,7 +296,7 @@ const Configure = struct {
             \\2. MultiMC (For windows use custom path)
             \\3. PrismLauncher
             \\4. Global Path use --link rusherhack folder to link it (contents will be deleted) (saved at .rhp/global)
-            \\4. Custom Path
+            \\5. Custom Path
             \\Enter the number of the launcher:
             \\-> 
         ;
@@ -346,8 +346,7 @@ const Configure = struct {
                         try env.appendSlice("/.minecraft");
                     },
                     else => {
-                        cli_loger.err("Unsupported OS\n", .{});
-                        return null;
+                        @compileError("unsupported OS");
                     },
                 }
                 self.config.mc_path = env;
@@ -366,8 +365,7 @@ const Configure = struct {
                         return;
                     },
                     else => {
-                        cli_loger.err("Unsupported OS\n", .{});
-                        return;
+                        @compileError("unsupported OS");
                     },
                 }
 
@@ -387,16 +385,16 @@ const Configure = struct {
                         return;
                     },
                     else => {
-                        cli_loger.err("Unsupported OS\n", .{});
-                        return;
+                        @compileError("unsupported OS");
                     },
                 }
 
                 self.config.mc_path = env;
             },
             Launcher.Global => {
-                var env = try config.GetAppdataPath(self.allocator);
+                var env = try config.getConfigFolder(self.allocator);
                 try env.appendSlice("/.rhp/global");
+
                 self.config.cfg = false;
                 self.config.subnames = false;
 

@@ -64,7 +64,7 @@ pub const Config = struct {
     pub fn save(self: *Config, allocator: std.mem.Allocator) !void {
         // Get $HOME or %APPDATA% depending on the OS
         // Return if the OS is not supported
-        var path = try GetAppdataPath(allocator);
+        var path = try getConfigFolder(allocator);
         try path.appendSlice(config_folder);
         defer path.deinit();
 
@@ -120,7 +120,7 @@ pub const Config = struct {
     /// - ErrorSet.OsNotSupported if the OS is not supported
     pub fn load(self: *Config, allocator: std.mem.Allocator) !void {
         // Get $HOME or %APPDATA% depending on the OS
-        var path = try GetAppdataPath(allocator);
+        var path = try getConfigFolder(allocator);
         try path.appendSlice(config_folder);
         defer path.deinit();
 
@@ -290,7 +290,7 @@ pub const Config = struct {
                     },
                 }
             } else if (eql(u8, lower_value.items, "global")) {
-                var env = try GetAppdataPath(allocator);
+                var env = try getConfigFolder(allocator);
                 switch (builtin.os.tag) {
                     .linux, .macos, .windows => {
                         try env.appendSlice("/.rhp/global");
@@ -365,6 +365,53 @@ pub fn GetAppdataPath(allocator: std.mem.Allocator) !std.ArrayList(u8) {
                 return ErrorSet.HomeNotFound;
             }
             try path.appendSlice(home.?);
+        },
+        .windows => {
+            const appdata = env.get("APPDATA"); // Get the appdata variable
+            if (appdata == null) { // Check if the appdata variable is defined
+                const msg =
+                    \\Appdata not found
+                    \\Please check if %APPDATA% is defined as it should be
+                ;
+                config.err("{s}\n", .{msg});
+                return ErrorSet.AppdataNotFound;
+            }
+            try path.appendSlice(appdata.?);
+        },
+        else => { // If the OS is not supported
+            config.err("OS not supported\n", .{});
+            return ErrorSet.OsNotSupported;
+        },
+    }
+
+    return path;
+}
+
+pub fn getConfigFolder(allocator: std.mem.Allocator) !std.ArrayList(u8) {
+    var env = try std.process.getEnvMap(allocator); // Get the environment variables
+    defer env.deinit(); // Deinit the environment variables
+
+    var path = std.ArrayList(u8).init(allocator); // Initialize the path
+
+    switch (builtin.os.tag) {
+        .linux, .macos => {
+            const xdg = env.get("XDG_STATE_HOME");
+            if (xdg == null) {
+                const home = env.get("HOME");
+                if (home == null) {
+                    const msg =
+                        \\Home not found
+                        \\Please check if $HOME is defined as it should be
+                    ;
+                    config.err("{s}\n", .{msg});
+                    return ErrorSet.HomeNotFound;
+                } else {
+                    try path.appendSlice(home.?);
+                    try path.appendSlice("/.local/state");
+                }
+            } else {
+                try path.appendSlice(xdg.?);
+            }
         },
         .windows => {
             const appdata = env.get("APPDATA"); // Get the appdata variable

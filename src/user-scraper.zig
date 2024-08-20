@@ -331,6 +331,8 @@ const DownloadSite = struct {
             };
             try path.appendSlice("/plugins/");
         }
+
+    
         // create folder "plugins" if it doesn't exist
         std.fs.makeDirAbsolute(path.items) catch |err| {
             if (err == std.fs.Dir.MakeError.PathAlreadyExists) {
