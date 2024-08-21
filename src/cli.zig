@@ -295,8 +295,8 @@ const Watcher = struct {
                 try self.file.seekTo(0);
                 const content = try self.file.readToEndAlloc(self.allocator, 10000000);
                 defer self.allocator.free(content);
-                try file.setEndPos(0);
                 try file.seekTo(0);
+                try file.setEndPos(0);
                 try file.writeAll(content);
                 time = new_stat.mtime;
                 cli_loger.info("Reloading plugin\n", .{});
