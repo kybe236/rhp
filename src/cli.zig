@@ -252,23 +252,25 @@ const Watcher = struct {
             try path.appendSlice(instance);
             try path.appendSlice("/.minecraft");
         }
-        try path.appendSlice("/rusherhack");
-        std.fs.makeDirAbsolute(path.items) catch |err| {
-            if (err == std.fs.Dir.MakeError.PathAlreadyExists) {
-                // ignore
-            } else {
-                return err;
-            }
-        };
-        try path.appendSlice("/plugins");
-        std.fs.makeDirAbsolute(path.items) catch |err| {
-            if (err == std.fs.Dir.MakeError.PathAlreadyExists) {
-                // ignore
-            } else {
-                return err;
-            }
-        };
-        try path.appendSlice("/");
+        if (std.mem.indexOf(u8, path.items, ".rhp/global") == null) {
+            try path.appendSlice("/rusherhack");
+            std.fs.makeDirAbsolute(path.items) catch |err| {
+                if (err == std.fs.Dir.MakeError.PathAlreadyExists) {
+                    // ignore
+                } else {
+                    return err;
+                }
+            };
+            try path.appendSlice("/plugins");
+            std.fs.makeDirAbsolute(path.items) catch |err| {
+                if (err == std.fs.Dir.MakeError.PathAlreadyExists) {
+                    // ignore
+                } else {
+                    return err;
+                }
+            };
+            try path.appendSlice("/");
+        }
         const start = std.mem.lastIndexOf(u8, self.path, "/");
         if (start == null) {
             cli_loger.err("Invalid path\n", .{});
