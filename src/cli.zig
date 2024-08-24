@@ -240,7 +240,7 @@ const Watcher = struct {
 
     pub fn watch(self: *Watcher) !void {
         var path = self.config.mc_path;
-        if (self.config.subnames) {
+        if (self.config.subnames) { // if subnames are used ask for the name
             const stdin = std.io.getStdOut().reader();
             const stdout = std.io.getStdOut().writer();
 
@@ -252,6 +252,7 @@ const Watcher = struct {
             try path.appendSlice(instance);
             try path.appendSlice("/.minecraft");
         }
+        // only append /rusherhack/plugins if it isn't globaly stored (saves me another config option)
         if (std.mem.indexOf(u8, path.items, ".rhp/global") == null) {
             try path.appendSlice("/rusherhack");
             std.fs.makeDirAbsolute(path.items) catch |err| {
@@ -277,6 +278,8 @@ const Watcher = struct {
             return;
         }
         try path.appendSlice(self.path[start.?..]);
+
+        // Create the plugin file
         const file = try std.fs.cwd().createFile(path.items, .{});
         defer file.close();
         {
@@ -285,19 +288,25 @@ const Watcher = struct {
             try file.seekTo(0);
             try file.writeAll(content);
         }
+
+        // watch for changes to the file
         var time: i128 = 0;
         const stat = try self.file.stat();
         time = stat.mtime;
         while (true) {
-            std.time.sleep(std.time.ms_per_s);
+            // Sleep for 100ms
+            std.time.sleep(std.time.ms_per_s / 10);
             const new_stat = try self.file.stat();
             if (new_stat.mtime > time) {
+                try file.lock(.exclusive);
+                std.time.sleep(std.time.ms_per_s * 4); // wait for the file to be written to i think gradle doesnt get a lock
                 try self.file.seekTo(0);
                 const content = try self.file.readToEndAlloc(self.allocator, 10000000);
                 defer self.allocator.free(content);
                 try file.seekTo(0);
                 try file.setEndPos(0);
                 try file.writeAll(content);
+                file.unlock();
                 time = new_stat.mtime;
                 cli_loger.info("Reloading plugin\n", .{});
             }
