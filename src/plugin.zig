@@ -97,7 +97,7 @@ pub fn init(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 
     while (names.peek() != null) {
         const name = names.next().?;
-        const match = try getBestMatch(allocator, name, scraper);
+        const match = try getBestMatch(allocator, std.mem.trim(u8, name, " "), scraper);
         try bestMatch.appendSlice(match);
         try bestMatch.appendSlice(" ");
     }
@@ -205,6 +205,10 @@ pub fn getBestMatch(allocator: std.mem.Allocator, pluginName: []const u8, scrape
         var name_words = std.mem.splitAny(u8, plugin.name.items, " ");
         while (name_words.peek() != null) {
             const word = name_words.next().?;
+            if (word.len == 0) {
+                std.debug.print("Empty word\n", .{});
+                continue;
+            }
 
             // Get distance based on lowecased words
             const lowerWord = try std.ascii.allocLowerString(allocator, word);
@@ -215,6 +219,10 @@ pub fn getBestMatch(allocator: std.mem.Allocator, pluginName: []const u8, scrape
         var words_desc = std.mem.splitAny(u8, plugin.description.items, " ");
         while (words_desc.peek() != null) {
             const word = words_desc.next().?;
+            if (word.len == 0) {
+                std.debug.print("Empty word\n", .{});
+                continue;
+            }
 
             // Get distance based on lowecased words
             const lowerWord = try std.ascii.allocLowerString(allocator, word);
@@ -226,6 +234,10 @@ pub fn getBestMatch(allocator: std.mem.Allocator, pluginName: []const u8, scrape
         var creator_words = std.mem.splitAny(u8, plugin.creator.items, " ");
         while (creator_words.peek() != null) {
             const word = creator_words.next().?;
+            if (word.len == 0) {
+                std.debug.print("Empty word\n", .{});
+                continue;
+            }
 
             // Get distance based on lowecased words
             const lowerWord = try std.ascii.allocLowerString(allocator, word);
@@ -371,7 +383,7 @@ const Scraper = struct {
                     continue;
                 }
 
-                if (std.mem.startsWith(u8, line.?, "### [")) {
+                if (std.mem.startsWith(u8, std.mem.trim(u8, line.?, " "), "- ### [")) {
                     const nameStart = std.mem.indexOf(u8, line.?, "[");
                     const nameEnd = std.mem.indexOf(u8, line.?, "](https://");
 
@@ -385,7 +397,7 @@ const Scraper = struct {
                     if (linkStart != null and linkEnd != null and linkStart.? < linkEnd.?) {
                         githubLink = line.?[linkStart.?..linkEnd.?];
                     }
-                } else if (std.mem.startsWith(u8, line.?, "**Creator**: ")) {
+                } else if (std.mem.startsWith(u8, std.mem.trim(u8, line.?, " "), "**Creator**: ")) {
                     const creatorStart = std.mem.indexOf(u8, line.?, "> [");
                     const creatorEnd = std.mem.indexOf(u8, line.?, "](https://");
                     if (creatorStart != null and creatorEnd != null and creatorStart.? < creatorEnd.?) {
@@ -410,6 +422,23 @@ const Scraper = struct {
                 } else if (line.?.len > 1) {
                     description = line.?;
                 }
+            }
+
+            //Remove " " from the start and end of the strings
+            if (name != null) {
+                name = std.mem.trim(u8, name.?, " ");
+            }
+            if (githubLink != null) {
+                githubLink = std.mem.trim(u8, githubLink.?, " ");
+            }
+            if (creator != null) {
+                creator = std.mem.trim(u8, creator.?, " ");
+            }
+            if (description != null) {
+                description = std.mem.trim(u8, description.?, " ");
+            }
+            if (creatorLink != null) {
+                creatorLink = std.mem.trim(u8, creatorLink.?, " ");
             }
 
             // Automatically report missing information
