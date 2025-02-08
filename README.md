@@ -1,3 +1,4 @@
+# !!! DEPRECATED FURTHER MANAGER PLANNED !!!
 
 # Rusherhack plugin manager
 
